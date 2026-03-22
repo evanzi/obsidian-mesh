@@ -67,7 +67,7 @@ export class ContactMapper {
 
 		const data: MappedContactData = {
 			"Mesh ID": contact.id,
-			"Mesh URL": `https://app.me.sh/contacts/${contact.id}`,
+			"Mesh URL": `https://app.me.sh/contact/${contact.id}`,
 			"Mesh Last Synced": now,
 		};
 
