@@ -1,25 +1,25 @@
 # Me.sh Sync for Obsidian
 
-Sync your contacts from [me.sh](https://me.sh) (Automattic's personal CRM, formerly Clay) into Obsidian as People notes with structured YAML frontmatter.
+Sync your contacts from [me.sh](https://me.sh) (Automattic's personal CRM, formerly [Clay](clay.earth) into Obsidian as People notes with structured YAML frontmatter, to benefit from Obsidian structured data and linking for meetings and other resources. 
 
-No API key needed -- the plugin reads auth tokens directly from the me.sh desktop app's local storage. Just have me.sh installed and logged in.
+No API key needed -- the plugin reads auth tokens directly from the me.sh desktop app's local storage. Users will need to have me.sh installed and logged in.
 
 ## What It Does
 
 - Syncs contacts from me.sh into Obsidian People notes with YAML frontmatter
-- Maps contact data to frontmatter fields: name, email, phone, company, title, location, social profiles (LinkedIn, Twitter, GitHub, Instagram, Facebook), bio, birthday, relationship strength, last contacted, and groups
-- Separates **direct** data (from connected services) from **enriched** data (from me.sh's enrichment engine, which can be inaccurate) -- enriched fields never overwrite existing data, and when they differ, a parallel "(Me.sh)" field is added so you can compare
+- Maps contact data to frontmatter fields: name, email, phone, company, title, location, social profiles (LinkedIn, Twitter, GitHub, Instagram, Facebook), bio, birthday, relationship strength, last contacted, and groups, when present.
+- Separates **direct** data (from connected services) from **enriched** data (from me.sh's enrichment engine, which can be in conflict with other data) -- enriched fields never overwrite existing data, and when they differ, a parallel "(Me.sh)" field is added so you can compare
 - Smart contact matching: Mesh ID > email (multi-email, both sides) > filename (case-insensitive, partial match with credentials stripped)
-- Auto-reorders frontmatter fields to a consistent order
+- Auto-reorders frontmatter fields to a consistent order, prioritizing contact data over IDs and URLs. 
 - Filters out non-person entries (phone numbers, shared mailboxes, etc.)
-- Deep links to open contacts in the me.sh web app
-- Uses the me.sh logo in the Obsidian ribbon
+- Deep links to open contacts in the me.sh web app, linkedin, etc.
+- Includes a sync / update button in the Obsidian command ribbon. 
 
 ## Requirements
 
 - **me.sh desktop app** installed and logged in (macOS, Windows, or Linux)
 - **Obsidian 1.5.0+**
-- **Desktop only** (the plugin reads from the local filesystem)
+- **Desktop only sync** (the plugin reads from the local filesystem). Once synced, data is available on mobile.
 
 ## Installation
 
@@ -29,6 +29,8 @@ Manual installation only (not yet in Community Plugins):
 2. Copy `main.js` and `manifest.json` to `.obsidian/plugins/obsidian-mesh/` in your vault
 3. Enable "Me.sh Sync for Obsidian" in Obsidian Settings > Community Plugins
 4. Set your People folder path in the plugin settings
+
+_Please test before making changes to your canonical contacts by using the Testing Safely steps below_
 
 ### Development
 
@@ -57,7 +59,7 @@ npm run build
 
 Recommended workflow:
 
-1. Copy your People folder to a test location (e.g., `00System/People-Test`)
+1. Copy your People or Contacts folder to a test location (e.g., `People-Test`)
 2. Set the plugin's People folder to the test location
 3. Enable **Update only** -- this only updates existing files, won't create new ones
 4. Run a sync and inspect the results
@@ -84,13 +86,13 @@ These only fill empty fields. When existing data differs, a parallel field is cr
 
 For example, if your note has `Company: Automattic` and me.sh says Anthropic PBC, the plugin adds `Company (Me.sh): Anthropic PBC` alongside the original. Your data stays untouched.
 
-### Fields me.sh never touches
+### Fields me.sh sync never touches in Obsidian
 
-Any field not listed above is left completely alone -- Team, Conn. type, Prof. Contact, Met?, Profession/Position, Google Contact ID, ID, URLs, and anything else you've added.
+Any field not listed above is left completely alone -- Team, Conn. type, Prof. Contact, Profession/Position, ID, URLs, and anything else you've added.
 
 ## How Authentication Works
 
-The plugin reads JWT tokens from the me.sh desktop app's Local Storage (LevelDB files). No API key or manual login is needed -- just have the me.sh app installed and logged in. Tokens are refreshed automatically via me.sh's token refresh endpoint.
+The plugin reads local tokens from the me.sh desktop app. No API key needs to be provided -- just have the me.sh app installed and logged in. Tokens are refreshed automatically via me.sh's token refresh endpoint.
 
 ## License
 
