@@ -56,8 +56,8 @@ export interface MeshContactDetail {
 	organizations: MeshOrganization[];
 	title: string;
 	avatarURL: string | null;
-	primaryLocation: string | null;
-	locations: unknown[];
+	primaryLocation: MeshLocation | null;
+	locations: MeshLocation[];
 	birthday: { month: number | null; day: number | null; year: number | null };
 	linkedinURL: string;
 	twitterURL: string;
@@ -85,10 +85,17 @@ export interface MeshContactDetail {
 export interface MeshOrganization {
 	name?: string;
 	title?: string;
-	description?: string;
-	startDate?: string;
-	endDate?: string;
-	current?: boolean;
+	description?: string | null;
+	start?: { year?: number; month?: number; day?: number } | null;
+	end?: { year?: number; month?: number; day?: number } | null;
+}
+
+export interface MeshLocation {
+	approximate?: string;
+	country?: string;
+	formatted?: string;
+	search?: string;
+	formatted_address?: string;
 }
 
 export interface MeshContactInfo {
