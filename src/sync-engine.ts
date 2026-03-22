@@ -496,8 +496,6 @@ export class SyncEngine {
 	}
 
 	private log(message: string) {
-		if (this.plugin.settings.debugLogging) {
-			console.log("[Me.sh Sync]", message);
-		}
+		console.log("[Me.sh Sync]", message);
 	}
 }

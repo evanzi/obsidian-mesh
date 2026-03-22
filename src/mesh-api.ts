@@ -222,8 +222,6 @@ export class MeshAPI {
 	}
 
 	private log(message: string) {
-		if (this.plugin.settings.debugLogging) {
-			console.log("[Mesh API]", message);
-		}
+		console.log("[Me.sh API]", message);
 	}
 }

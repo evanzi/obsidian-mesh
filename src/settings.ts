@@ -7,13 +7,12 @@ export interface MeshSettings {
 	syncOnStartup: boolean;
 	fileNameFormat: "full" | "lastFirst" | "firstLast";
 	conflictResolution: "obsidian" | "mesh" | "ask";
-	updateOnly: boolean; // only update existing files, don't create new ones
-	dryRun: boolean; // log what would change without writing
+	updateOnly: boolean;
+	dryRun: boolean;
 	syncSocialProfiles: boolean;
 	syncRelationshipData: boolean;
 	syncTagsAndGroups: boolean;
 	syncPhotos: boolean;
-	debugLogging: boolean;
 }
 
 export const DEFAULT_SETTINGS: MeshSettings = {
@@ -28,7 +27,6 @@ export const DEFAULT_SETTINGS: MeshSettings = {
 	syncRelationshipData: true,
 	syncTagsAndGroups: true,
 	syncPhotos: false,
-	debugLogging: false,
 };
 
 export class MeshSettingTab extends PluginSettingTab {
@@ -43,7 +41,7 @@ export class MeshSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Me.sh Sync Settings" });
+		containerEl.createEl("h2", { text: "Me.sh Sync for Obsidian" });
 
 		// Connection status
 		new Setting(containerEl)
@@ -52,7 +50,7 @@ export class MeshSettingTab extends PluginSettingTab {
 			.then(async (setting) => {
 				try {
 					const connected = await this.plugin.auth.checkConnection();
-					setting.setDesc(connected ? "Connected to me.sh" : "Not connected — open me.sh app and log in");
+					setting.setDesc(connected ? "Connected to me.sh" : "Not connected -- open me.sh app and log in");
 				} catch {
 					setting.setDesc("Unable to detect me.sh app");
 				}
@@ -77,7 +75,7 @@ export class MeshSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Update only")
-			.setDesc("Only update existing files — don't create new contacts. Useful for initial merge testing.")
+			.setDesc("Only update existing files -- don't create new contacts. Useful for initial merge testing.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.updateOnly).onChange(async (value) => {
 					this.plugin.settings.updateOnly = value;
@@ -87,7 +85,7 @@ export class MeshSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Dry run")
-			.setDesc("Log what would change to console without writing any files. Check console (Ctrl+Shift+I) for output.")
+			.setDesc("Log what would change to console without writing any files. Open console with Cmd+Option+I.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.dryRun).onChange(async (value) => {
 					this.plugin.settings.dryRun = value;
@@ -97,7 +95,7 @@ export class MeshSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Conflict resolution")
-			.setDesc("When me.sh data conflicts with manual edits in fields me.sh manages (Email, Company, Title, etc.)")
+			.setDesc("When me.sh data conflicts with manual edits in direct fields (Email, Phone, etc.)")
 			.addDropdown((drop) =>
 				drop
 					.addOption("obsidian", "Obsidian wins (keep manual edits)")
@@ -139,19 +137,6 @@ export class MeshSettingTab extends PluginSettingTab {
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncTagsAndGroups).onChange(async (value) => {
 					this.plugin.settings.syncTagsAndGroups = value;
-					await this.plugin.saveSettings();
-				})
-			);
-
-		// Debug
-		containerEl.createEl("h3", { text: "Advanced" });
-
-		new Setting(containerEl)
-			.setName("Debug logging")
-			.setDesc("Log detailed sync info to console")
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.debugLogging).onChange(async (value) => {
-					this.plugin.settings.debugLogging = value;
 					await this.plugin.saveSettings();
 				})
 			);
