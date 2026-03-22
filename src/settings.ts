@@ -3,8 +3,8 @@ import type MeshPlugin from "./main";
 
 export interface MeshSettings {
 	peopleFolder: string;
-	syncInterval: number; // hours, 0 = manual only
-	syncOnStartup: boolean;
+	autoSync: boolean;
+	syncInterval: number; // minutes
 	fileNameFormat: "full" | "lastFirst" | "firstLast";
 	conflictResolution: "obsidian" | "mesh" | "ask";
 	updateOnly: boolean;
@@ -17,8 +17,8 @@ export interface MeshSettings {
 
 export const DEFAULT_SETTINGS: MeshSettings = {
 	peopleFolder: "People",
-	syncInterval: 0,
-	syncOnStartup: false,
+	autoSync: false,
+	syncInterval: 60,
 	fileNameFormat: "full",
 	conflictResolution: "obsidian",
 	updateOnly: false,
@@ -72,6 +72,39 @@ export class MeshSettingTab extends PluginSettingTab {
 
 		// Sync behavior
 		containerEl.createEl("h3", { text: "Sync Behavior" });
+
+		new Setting(containerEl)
+			.setName("Auto sync")
+			.setDesc("Automatically sync contacts in the background")
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.autoSync).onChange(async (value) => {
+					this.plugin.settings.autoSync = value;
+					await this.plugin.saveSettings();
+					this.plugin.startAutoSync();
+					this.display(); // refresh to show/hide interval
+				})
+			);
+
+		if (this.plugin.settings.autoSync) {
+			new Setting(containerEl)
+				.setName("Sync interval")
+				.setDesc("Minutes between automatic syncs")
+				.addDropdown((drop) =>
+					drop
+						.addOption("30", "Every 30 minutes")
+						.addOption("60", "Every hour")
+						.addOption("120", "Every 2 hours")
+						.addOption("360", "Every 6 hours")
+						.addOption("720", "Every 12 hours")
+						.addOption("1440", "Every 24 hours")
+						.setValue(String(this.plugin.settings.syncInterval))
+						.onChange(async (value) => {
+							this.plugin.settings.syncInterval = Number(value);
+							await this.plugin.saveSettings();
+							this.plugin.startAutoSync();
+						})
+				);
+		}
 
 		new Setting(containerEl)
 			.setName("Update only")
