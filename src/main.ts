@@ -1,8 +1,11 @@
-import { Plugin, Notice } from "obsidian";
+import { Plugin, Notice, addIcon } from "obsidian";
 import { MeshSettingTab, MeshSettings, DEFAULT_SETTINGS } from "./settings";
 import { MeshAuth } from "./mesh-auth";
 import { MeshAPI } from "./mesh-api";
 import { SyncEngine } from "./sync-engine";
+
+// Me.sh logo -- uses currentColor to adapt to light/dark mode
+const MESH_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 26" fill="currentColor" stroke="none"><path d="M32.03 0C36.44 0 40 3.43 40 7.68v13.33A4.94 4.94 0 0 1 35.13 26a4.9 4.9 0 0 1-4.83-4.99V7.68c0-.92.77-1.67 1.73-1.67s1.74.75 1.74 1.67v13.33c0 .9.61 1.65 1.36 1.65s1.4-.75 1.4-1.65V7.68c0-2.4-2-4.34-4.5-4.34a4.43 4.43 0 0 0-4.5 4.34v13.33A4.94 4.94 0 0 1 22.66 26a4.9 4.9 0 0 1-4.83-4.99V7.68c0-.92.77-1.67 1.73-1.67s1.74.75 1.74 1.67v13.33c0 .9.61 1.65 1.36 1.65s1.4-.75 1.4-1.65V7.68c0-2.4-2-4.34-4.5-4.34a4.43 4.43 0 0 0-4.5 4.34v13.33A4.9 4.9 0 0 1 10.23 26a4.9 4.9 0 0 1-4.83-4.99V7.68c0-.92.77-1.67 1.73-1.67s1.74.75 1.74 1.67v13.33c0 .91.62 1.65 1.36 1.65s1.37-.74 1.37-1.65V7.68c0-2.4-1.99-4.34-4.47-4.34-1.6 0-3.07.82-3.9 2.17a1.77 1.77 0 0 1-2.37.61 1.64 1.64 0 0 1-.63-2.28A8 8 0 0 1 7.13 0a8 8 0 0 1 6.01 2.69l.19.21.19-.21a8.1 8.1 0 0 1 12.09 0l.19.21.19-.21A8 8 0 0 1 32.03 0"/></svg>`;
 
 export default class MeshPlugin extends Plugin {
 	settings: MeshSettings;
@@ -17,8 +20,11 @@ export default class MeshPlugin extends Plugin {
 		this.api = new MeshAPI(this);
 		this.syncEngine = new SyncEngine(this);
 
+		// Register me.sh logo icon
+		addIcon("mesh-logo", MESH_ICON);
+
 		// Ribbon icon for manual sync
-		this.addRibbonIcon("refresh-cw", "Sync Me.sh", async () => {
+		this.addRibbonIcon("mesh-logo", "Sync Me.sh", async () => {
 			await this.runSync();
 		});
 
