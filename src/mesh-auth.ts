@@ -212,8 +212,6 @@ export class MeshAuth {
 	}
 
 	private log(message: string) {
-		if (this.plugin.settings.debugLogging) {
-			console.log("[Mesh Auth]", message);
-		}
+		console.log("[Me.sh Auth]", message);
 	}
 }
