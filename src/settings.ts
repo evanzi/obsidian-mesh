@@ -7,6 +7,8 @@ export interface MeshSettings {
 	syncOnStartup: boolean;
 	fileNameFormat: "full" | "lastFirst" | "firstLast";
 	conflictResolution: "obsidian" | "mesh" | "ask";
+	updateOnly: boolean; // only update existing files, don't create new ones
+	dryRun: boolean; // log what would change without writing
 	syncSocialProfiles: boolean;
 	syncRelationshipData: boolean;
 	syncTagsAndGroups: boolean;
@@ -20,6 +22,8 @@ export const DEFAULT_SETTINGS: MeshSettings = {
 	syncOnStartup: false,
 	fileNameFormat: "full",
 	conflictResolution: "obsidian",
+	updateOnly: false,
+	dryRun: false,
 	syncSocialProfiles: true,
 	syncRelationshipData: true,
 	syncTagsAndGroups: true,
@@ -39,18 +43,18 @@ export class MeshSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Mesh Settings" });
+		containerEl.createEl("h2", { text: "Me.sh Sync Settings" });
 
 		// Connection status
 		new Setting(containerEl)
-			.setName("Connection Status")
-			.setDesc("Checking Mesh desktop app...")
+			.setName("Connection status")
+			.setDesc("Checking me.sh desktop app...")
 			.then(async (setting) => {
 				try {
 					const connected = await this.plugin.auth.checkConnection();
-					setting.setDesc(connected ? "Connected" : "Not connected - open Mesh app and log in");
+					setting.setDesc(connected ? "Connected to me.sh" : "Not connected — open me.sh app and log in");
 				} catch {
-					setting.setDesc("Unable to detect Mesh app");
+					setting.setDesc("Unable to detect me.sh app");
 				}
 			});
 
@@ -68,15 +72,37 @@ export class MeshSettingTab extends PluginSettingTab {
 					})
 			);
 
-		// Conflict resolution
+		// Sync behavior
+		containerEl.createEl("h3", { text: "Sync Behavior" });
+
+		new Setting(containerEl)
+			.setName("Update only")
+			.setDesc("Only update existing files — don't create new contacts. Useful for initial merge testing.")
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.updateOnly).onChange(async (value) => {
+					this.plugin.settings.updateOnly = value;
+					await this.plugin.saveSettings();
+				})
+			);
+
+		new Setting(containerEl)
+			.setName("Dry run")
+			.setDesc("Log what would change to console without writing any files. Check console (Ctrl+Shift+I) for output.")
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.dryRun).onChange(async (value) => {
+					this.plugin.settings.dryRun = value;
+					await this.plugin.saveSettings();
+				})
+			);
+
 		new Setting(containerEl)
 			.setName("Conflict resolution")
-			.setDesc("When Mesh data conflicts with manual edits in Obsidian")
+			.setDesc("When me.sh data conflicts with manual edits in fields me.sh manages (Email, Company, Title, etc.)")
 			.addDropdown((drop) =>
 				drop
 					.addOption("obsidian", "Obsidian wins (keep manual edits)")
-					.addOption("mesh", "Mesh wins (overwrite with Mesh data)")
-					.addOption("ask", "Ask (flag for review)")
+					.addOption("mesh", "Me.sh wins (overwrite with me.sh data)")
+					.addOption("ask", "Ask (log conflicts for review)")
 					.setValue(this.plugin.settings.conflictResolution)
 					.onChange(async (value) => {
 						this.plugin.settings.conflictResolution = value as MeshSettings["conflictResolution"];
@@ -84,8 +110,8 @@ export class MeshSettingTab extends PluginSettingTab {
 					})
 			);
 
-		// Sync options
-		containerEl.createEl("h3", { text: "Sync Options" });
+		// Data options
+		containerEl.createEl("h3", { text: "Data Options" });
 
 		new Setting(containerEl)
 			.setName("Sync social profiles")
@@ -109,7 +135,7 @@ export class MeshSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Sync tags & groups")
-			.setDesc("Sync Mesh tags and group memberships")
+			.setDesc("Sync me.sh tags and group memberships")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncTagsAndGroups).onChange(async (value) => {
 					this.plugin.settings.syncTagsAndGroups = value;
@@ -118,6 +144,8 @@ export class MeshSettingTab extends PluginSettingTab {
 			);
 
 		// Debug
+		containerEl.createEl("h3", { text: "Advanced" });
+
 		new Setting(containerEl)
 			.setName("Debug logging")
 			.setDesc("Log detailed sync info to console")
