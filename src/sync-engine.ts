@@ -233,6 +233,7 @@ export class SyncEngine {
 		"Twitter",
 		"GitHub",
 		"Instagram",
+		"Facebook",
 		"Bio",
 		"Met?",
 		"Relationship Strength",

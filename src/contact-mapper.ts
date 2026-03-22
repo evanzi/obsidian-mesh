@@ -31,6 +31,7 @@ export interface MappedContactData {
 	Twitter?: string;
 	GitHub?: string;
 	Instagram?: string;
+	Facebook?: string;
 	"Last Contacted"?: string;
 	"Relationship Strength"?: string;
 	"Mesh Groups"?: string[];
@@ -92,6 +93,7 @@ export class ContactMapper {
 			if (contact.twitterURL) data.Twitter = contact.twitterURL;
 			if (contact.githubURL) data.GitHub = contact.githubURL;
 			if (contact.instagramURL) data.Instagram = contact.instagramURL;
+			if (contact.facebookURL) data.Facebook = contact.facebookURL;
 
 			// Fallback: social handles from information[]
 			for (const info of contact.information || []) {
@@ -111,6 +113,10 @@ export class ContactMapper {
 					data.Instagram = info.value.startsWith("http")
 						? info.value
 						: `https://instagram.com/${info.value}`;
+				} else if (!data.Facebook && info.type === "facebook") {
+					data.Facebook = info.value.startsWith("http")
+						? info.value
+						: `https://facebook.com/${info.value}`;
 				}
 			}
 		}
