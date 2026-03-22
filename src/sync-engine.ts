@@ -89,8 +89,8 @@ export class SyncEngine {
 						result.updated++;
 					} else {
 						const updated = await this.updateFile(existingFile, mapped, syncMeta);
-						await this.reorderFrontmatter(existingFile);
 						if (updated) {
+							await this.reorderFrontmatter(existingFile);
 							result.updated++;
 						} else {
 							result.skipped++;
@@ -307,17 +307,10 @@ export class SyncEngine {
 			const contactId = String(mapped["Mesh ID"]);
 			const lastSynced = syncMeta.contacts[contactId] || {};
 
+			// First pass: check all non-metadata fields for changes
 			for (const [key, newValue] of Object.entries(mapped)) {
 				if (newValue === undefined) continue;
-
-				// Always update me.sh metadata fields
-				if (key === "Mesh Last Synced" || key === "Mesh URL" || key === "Mesh ID") {
-					if (fm[key] !== newValue) {
-						fm[key] = newValue;
-						updated = true;
-					}
-					continue;
-				}
+				if (key === "Mesh Last Synced" || key === "Mesh URL" || key === "Mesh ID") continue;
 
 				const currentValue = fm[key];
 				const isEnriched = ContactMapper.isEnrichedField(key);
@@ -380,6 +373,21 @@ export class SyncEngine {
 			if (fm["Source"] === "Google Contacts") {
 				fm["Source"] = "Mesh";
 				updated = true;
+			}
+
+			// Only write metadata fields when actual data changed
+			if (updated) {
+				fm["Mesh ID"] = mapped["Mesh ID"];
+				fm["Mesh URL"] = mapped["Mesh URL"];
+				fm["Mesh Last Synced"] = mapped["Mesh Last Synced"];
+			} else {
+				// Still set Mesh ID/URL on first sync (when they don't exist yet)
+				if (!fm["Mesh ID"]) {
+					fm["Mesh ID"] = mapped["Mesh ID"];
+					fm["Mesh URL"] = mapped["Mesh URL"];
+					fm["Mesh Last Synced"] = mapped["Mesh Last Synced"];
+					updated = true;
+				}
 			}
 		});
 
