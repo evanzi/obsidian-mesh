@@ -3,35 +3,87 @@ import type MeshPlugin from "./main";
 
 const API_BASE = "https://api.me.sh";
 
-export interface MeshContact {
+/**
+ * Contact shape from the LIST endpoint (/api/v1/network/contacts/?limit=N&offset=N).
+ * Uses snake_case. For richer data, use the detail endpoint.
+ */
+export interface MeshContactList {
 	id: number;
-	objectID?: string;
+	created: string;
+	display_name: string;
+	first_name: string;
+	last_name: string;
+	full_name: string;
+	avatar_url?: string;
+	avatar_blur?: string;
+	source: string; // "LI", "EM", "GC", etc.
+	score: number;
+	relationship?: string | null;
+	information: MeshContactInfo[];
+	notes: MeshNote[];
+	is_clay_user: boolean;
+	reminder?: unknown;
+	skip_enrichment: boolean;
+	is_restricted: boolean;
+	interaction_type?: string;
+	person?: {
+		first_name: string;
+		last_name: string;
+		full_name: string;
+		avatar_url?: string;
+		hits: number;
+	};
+}
+
+/**
+ * Contact shape from the DETAIL endpoint (/api/v1/network/contacts/{id}/).
+ * Uses camelCase. Has richer data (orgs, social URLs, interaction dates, etc.)
+ */
+export interface MeshContactDetail {
+	id: number;
+	objectID: string;
+	created: number; // unix timestamp
 	displayName: string;
 	fullName: string;
 	firstName: string;
-	middleName?: string;
+	middleName: string;
 	lastName: string;
-	nickname?: string;
-	bio?: string;
-	byline?: string;
-	headline?: string;
-	organizations?: MeshOrganization[];
-	information?: MeshContactInfo[];
-	notes?: MeshNote[];
-	score?: number;
-	relationship?: string;
-	created?: string;
-	avatar_url?: string;
-	// Social profiles extracted from information[]
-	linkedin?: string;
-	twitter?: string;
-	github?: string;
-	instagram?: string;
-	facebook?: string;
+	nickname: string;
+	bio: string;
+	byline: string;
+	headline: string;
+	organization: string;
+	organizations: MeshOrganization[];
+	title: string;
+	avatarURL: string | null;
+	primaryLocation: string | null;
+	locations: unknown[];
+	birthday: { month: number | null; day: number | null; year: number | null };
+	linkedinURL: string;
+	twitterURL: string;
+	twitterHandle: string;
+	githubURL: string;
+	instagramURL: string;
+	facebookURL: string;
+	website: string;
+	websites: string[];
+	information: MeshContactInfo[];
+	notes: MeshNote[];
+	score: number;
+	relationship: string | null;
+	isClayUser: boolean;
+	interactionType: string;
+	integrations: string[];
+	lastInteractionDate: number | null; // unix timestamp
+	firstInteractionDate: number | null;
+	lastEmailDate: number | null;
+	lastMeetingDate: number | null;
+	lists: MeshListMembership[];
+	starred: boolean;
 }
 
 export interface MeshOrganization {
-	name: string;
+	name?: string;
 	title?: string;
 	description?: string;
 	startDate?: string;
@@ -40,10 +92,12 @@ export interface MeshOrganization {
 }
 
 export interface MeshContactInfo {
-	type: string; // email, phone, url, social, location, etc.
+	id?: number;
+	type: string; // "email", "phone", "linkedin", "twitter", etc.
 	value: string;
-	label?: string;
 	source?: string;
+	label?: string | null;
+	primary?: boolean;
 }
 
 export interface MeshNote {
@@ -51,6 +105,13 @@ export interface MeshNote {
 	body: string;
 	created: string;
 	updated: string;
+}
+
+export interface MeshListMembership {
+	id: number;
+	title: string;
+	slug?: string;
+	color?: string;
 }
 
 export interface MeshGroup {
@@ -98,15 +159,15 @@ export class MeshAPI {
 	}
 
 	/**
-	 * Fetch all contacts with pagination
+	 * Fetch all contacts (list endpoint, snake_case) with pagination
 	 */
-	async getAllContacts(limit = 100): Promise<MeshContact[]> {
-		const allContacts: MeshContact[] = [];
+	async getAllContacts(limit = 100): Promise<MeshContactList[]> {
+		const allContacts: MeshContactList[] = [];
 		let offset = 0;
 		let hasMore = true;
 
 		while (hasMore) {
-			const page = await this.request<PaginatedResponse<MeshContact>>(
+			const page = await this.request<PaginatedResponse<MeshContactList>>(
 				`/api/v1/network/contacts/?limit=${limit}&offset=${offset}`
 			);
 
@@ -121,10 +182,10 @@ export class MeshAPI {
 	}
 
 	/**
-	 * Fetch a single contact by ID
+	 * Fetch a single contact detail (camelCase, richer data)
 	 */
-	async getContact(id: number): Promise<MeshContact> {
-		return this.request<MeshContact>(`/api/v1/network/contacts/${id}/`);
+	async getContactDetail(id: number): Promise<MeshContactDetail> {
+		return this.request<MeshContactDetail>(`/api/v1/network/contacts/${id}/`);
 	}
 
 	/**
