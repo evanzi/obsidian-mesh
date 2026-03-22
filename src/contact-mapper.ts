@@ -98,10 +98,15 @@ export class ContactMapper {
 			data.Birthday = `${y}-${m}-${d}`;
 		}
 
-		// Location -- primaryLocation is an object with approximate, country, formatted
+		// Location -- primaryLocation has varying shapes (city/region or approximate)
 		const loc = contact.primaryLocation || contact.locations?.[0];
 		if (loc) {
-			if (loc.approximate) data.City = loc.approximate;
+			// Prefer city field, fall back to approximate (which may be "City, State")
+			if (loc.city) {
+				data.City = loc.region ? `${loc.city}, ${loc.region}` : loc.city;
+			} else if (loc.approximate) {
+				data.City = loc.approximate;
+			}
 			if (loc.country) data.Country = loc.country;
 		}
 

@@ -91,6 +91,8 @@ export interface MeshOrganization {
 }
 
 export interface MeshLocation {
+	city?: string;
+	region?: string;
 	approximate?: string;
 	country?: string;
 	formatted?: string;
