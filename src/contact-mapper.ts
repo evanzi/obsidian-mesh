@@ -221,20 +221,32 @@ export class ContactMapper {
 
 	/**
 	 * Check if a contact from the list endpoint looks like a real person
-	 * (not a shared mailbox, crash reporter, etc.)
+	 * (not a shared mailbox, phone number, business entity, etc.)
 	 */
 	static isRealContact(contact: MeshContactList): boolean {
 		const name = (contact.display_name || "").trim();
 		const firstName = (contact.first_name || "").trim();
 		const lastName = (contact.last_name || "").trim();
 
-		// Has a real first and last name
+		// Reject empty / dot-only names
+		if (!name || name === ".") return false;
+
+		// Reject email addresses as display names
+		if (name.includes("@")) return false;
+
+		// Reject phone numbers (all digits, dashes, plus, spaces, parens)
+		if (/^[\d\s\-+().]+$/.test(name)) return false;
+
+		// Reject names starting with special characters
+		if (/^['+\-]/.test(name)) return false;
+
+		// Must have a real first OR last name (not just dots)
 		if (firstName && firstName !== "." && lastName && lastName !== ".") {
 			return true;
 		}
 
-		// Has a reasonable full name (not just an email)
-		if (name && !name.includes("@") && name !== "." && name.length > 1) {
+		// Accept if display name looks like a person name (at least 2 chars, no @)
+		if (name.length > 1) {
 			return true;
 		}
 

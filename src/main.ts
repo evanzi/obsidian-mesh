@@ -18,14 +18,14 @@ export default class MeshPlugin extends Plugin {
 		this.syncEngine = new SyncEngine(this);
 
 		// Ribbon icon for manual sync
-		this.addRibbonIcon("refresh-cw", "Update Mesh", async () => {
+		this.addRibbonIcon("refresh-cw", "Sync Me.sh", async () => {
 			await this.runSync();
 		});
 
 		// Command palette
 		this.addCommand({
 			id: "sync-now",
-			name: "Sync contacts from Mesh",
+			name: "Sync contacts from me.sh",
 			callback: async () => {
 				await this.runSync();
 			},
@@ -33,7 +33,7 @@ export default class MeshPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-in-mesh",
-			name: "Open current contact in Mesh",
+			name: "Open current contact in me.sh",
 			checkCallback: (checking: boolean) => {
 				const file = this.app.workspace.getActiveFile();
 				if (file) {
@@ -51,29 +51,30 @@ export default class MeshPlugin extends Plugin {
 
 		this.addSettingTab(new MeshSettingTab(this.app, this));
 
-		console.log("Mesh plugin loaded");
+		console.log("Me.sh Sync plugin loaded");
 	}
 
 	async runSync() {
 		try {
-			new Notice("Mesh: Starting sync...");
+			new Notice("Me.sh: Starting sync...");
 			const result = await this.syncEngine.sync();
 			const parts = [`${result.created} new`, `${result.updated} updated`];
+			if (result.unmatched > 0) parts.push(`${result.unmatched} unmatched`);
 			if (result.filtered > 0) parts.push(`${result.filtered} filtered`);
 			if (result.errors.length > 0) parts.push(`${result.errors.length} errors`);
-			new Notice(`Mesh: ${parts.join(", ")}`);
+			new Notice(`Me.sh: ${parts.join(", ")}`);
 		} catch (error) {
 			console.error("Mesh sync failed:", error);
 			if (error instanceof Error && error.message.includes("auth")) {
-				new Notice("Mesh: Please open the Mesh app and log in, then try again.");
+				new Notice("Me.sh: Please open the me.sh app and log in, then try again.");
 			} else {
-				new Notice(`Mesh: Sync failed - ${error instanceof Error ? error.message : "unknown error"}`);
+				new Notice(`Me.sh: Sync failed - ${error instanceof Error ? error.message : "unknown error"}`);
 			}
 		}
 	}
 
 	onunload() {
-		console.log("Mesh plugin unloaded");
+		console.log("Me.sh Sync plugin unloaded");
 	}
 
 	async loadSettings() {

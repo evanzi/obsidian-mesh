@@ -1,6 +1,6 @@
 import { TFile, TFolder, normalizePath, Notice } from "obsidian";
 import type MeshPlugin from "./main";
-import { ContactMapper, MESH_MANAGED_FIELDS } from "./contact-mapper";
+import { ContactMapper } from "./contact-mapper";
 import type { MappedContactData } from "./contact-mapper";
 import type { MeshContactList, MeshContactDetail, MeshGroup } from "./mesh-api";
 
@@ -9,6 +9,7 @@ export interface SyncResult {
 	updated: number;
 	skipped: number;
 	filtered: number;
+	unmatched: number; // contacts in me.sh with no existing file (when updateOnly)
 	errors: string[];
 }
 
@@ -28,10 +29,18 @@ export class SyncEngine {
 	}
 
 	async sync(): Promise<SyncResult> {
-		const result: SyncResult = { created: 0, updated: 0, skipped: 0, filtered: 0, errors: [] };
+		const result: SyncResult = {
+			created: 0, updated: 0, skipped: 0,
+			filtered: 0, unmatched: 0, errors: [],
+		};
+		const isDryRun = this.plugin.settings.dryRun;
+		const isUpdateOnly = this.plugin.settings.updateOnly;
+
+		if (isDryRun) this.log("=== DRY RUN MODE — no files will be written ===");
+		if (isUpdateOnly) this.log("=== UPDATE ONLY — no new files will be created ===");
 
 		// Step 1: Fetch contact list (fast, paginated)
-		this.log("Fetching contact list from Mesh...");
+		this.log("Fetching contact list from me.sh...");
 		const contactList = await this.plugin.api.getAllContacts();
 		this.log(`Fetched ${contactList.length} contacts from list endpoint`);
 
@@ -46,11 +55,13 @@ export class SyncEngine {
 
 		// Ensure target folder exists
 		const folderPath = normalizePath(this.plugin.settings.peopleFolder);
-		await this.ensureFolder(folderPath);
+		if (!isDryRun) await this.ensureFolder(folderPath);
 
 		// Load existing files and sync metadata
 		const existingFiles = await this.getExistingPeopleFiles(folderPath);
-		const syncMeta = await this.loadSyncMetadata();
+		const syncMeta = isDryRun ? { lastSync: "", contacts: {} } : await this.loadSyncMetadata();
+
+		this.log(`Found ${existingFiles.size} existing files in ${folderPath}`);
 
 		// Step 4: Fetch detail for each contact and sync
 		for (let i = 0; i < realContacts.length; i++) {
@@ -58,7 +69,7 @@ export class SyncEngine {
 
 			// Progress update every 50 contacts
 			if (i > 0 && i % 50 === 0) {
-				new Notice(`Mesh: Syncing ${i}/${realContacts.length}...`);
+				new Notice(`Me.sh: Syncing ${i}/${realContacts.length}...`);
 			}
 
 			try {
@@ -73,19 +84,34 @@ export class SyncEngine {
 				const existingFile = this.findMatchingFile(existingFiles, detail, mapped);
 
 				if (existingFile) {
-					const updated = await this.updateFile(existingFile, mapped, syncMeta);
-					if (updated) {
+					if (isDryRun) {
+						this.logDryRunUpdate(existingFile, mapped, syncMeta);
 						result.updated++;
 					} else {
-						result.skipped++;
+						const updated = await this.updateFile(existingFile, mapped, syncMeta);
+						if (updated) {
+							result.updated++;
+						} else {
+							result.skipped++;
+						}
 					}
+				} else if (isUpdateOnly) {
+					this.log(`[unmatched] ${detail.displayName} — no existing file found`);
+					result.unmatched++;
 				} else {
-					await this.createFile(filePath, mapped);
-					result.created++;
+					if (isDryRun) {
+						this.log(`[dry-run] Would create: ${filePath}`);
+						result.created++;
+					} else {
+						await this.createFile(filePath, mapped);
+						result.created++;
+					}
 				}
 
-				// Store sync metadata
-				syncMeta.contacts[String(detail.id)] = { ...mapped } as Record<string, unknown>;
+				// Store sync metadata (skip in dry run)
+				if (!isDryRun) {
+					syncMeta.contacts[String(detail.id)] = { ...mapped } as Record<string, unknown>;
+				}
 
 				// Rate limit delay
 				if (i < realContacts.length - 1) {
@@ -98,52 +124,64 @@ export class SyncEngine {
 			}
 		}
 
-		// Save sync metadata
-		syncMeta.lastSync = new Date().toISOString();
-		await this.saveSyncMetadata(syncMeta);
+		// Save sync metadata (skip in dry run)
+		if (!isDryRun) {
+			syncMeta.lastSync = new Date().toISOString();
+			await this.saveSyncMetadata(syncMeta);
+		}
 
-		this.log(`Sync complete: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped, ${result.filtered} filtered, ${result.errors.length} errors`);
+		this.log(`Sync complete: ${result.created} created, ${result.updated} updated, ${result.skipped} unchanged, ${result.filtered} filtered, ${result.unmatched} unmatched, ${result.errors.length} errors`);
 		return result;
 	}
 
 	/**
-	 * Find an existing file that matches a Mesh contact (detail endpoint)
+	 * Find an existing file that matches a Mesh contact.
+	 * Priority: Mesh ID > email (all emails, both sides) > filename
 	 */
 	private findMatchingFile(
 		files: Map<string, TFile>,
 		contact: MeshContactDetail,
 		mapped: MappedContactData
 	): TFile | null {
-		// Match by Mesh ID first
+		// Match by Mesh ID first (fastest for subsequent syncs)
 		for (const [_, file] of files) {
 			const fm = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
 			if (fm?.["Mesh ID"] === contact.id) return file;
 		}
 
-		// Match by email
-		if (mapped["Email (Private)"]) {
+		// Collect ALL emails from the Mesh contact (not just primary)
+		const meshEmails = (contact.information || [])
+			.filter((i) => i.type === "email")
+			.map((i) => i.value.toLowerCase());
+
+		if (meshEmails.length > 0) {
 			for (const [_, file] of files) {
 				const fm = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
 				const existingEmail = fm?.["Email (Private)"];
 				if (!existingEmail) continue;
 
-				// Handle both single email and comma-separated emails
-				const existingEmails = String(existingEmail).split(",").map((e) => e.trim().toLowerCase());
-				if (existingEmails.includes(mapped["Email (Private)"]!.toLowerCase())) {
+				// Split comma-separated emails in the Obsidian file
+				const obsidianEmails = String(existingEmail).split(",").map((e) => e.trim().toLowerCase());
+
+				// Check if ANY Mesh email matches ANY Obsidian email
+				if (meshEmails.some((me) => obsidianEmails.includes(me))) {
 					return file;
 				}
 			}
 		}
 
-		// Match by file name (full name)
+		// Match by file name (normalize whitespace for comparison)
+		const normalize = (s: string) => s.replace(/\s+/g, " ").trim();
 		const possibleNames = [
 			contact.fullName,
 			contact.displayName,
 			`${contact.firstName} ${contact.lastName}`,
-		].filter((n) => n && n.trim() && n.trim() !== ".");
+		]
+			.filter((n) => n && n.trim() && n.trim() !== ".")
+			.map((n) => normalize(n!));
 
 		for (const name of possibleNames) {
-			const file = files.get(name!.trim());
+			const file = files.get(name);
 			if (file) return file;
 		}
 
@@ -151,7 +189,9 @@ export class SyncEngine {
 	}
 
 	/**
-	 * Update an existing file with Mesh data, respecting conflict resolution
+	 * Update an existing file with me.sh data.
+	 * Only touches fields that me.sh provides data for.
+	 * Any fields not in the mapped data are left completely untouched.
 	 */
 	private async updateFile(
 		file: TFile,
@@ -164,13 +204,14 @@ export class SyncEngine {
 			const contactId = String(mapped["Mesh ID"]);
 			const lastSynced = syncMeta.contacts[contactId] || {};
 
+			// Only iterate over fields that me.sh provides — everything else is untouched
 			for (const [key, newValue] of Object.entries(mapped)) {
 				if (newValue === undefined) continue;
 
 				const currentValue = fm[key];
 				const lastSyncedValue = lastSynced[key];
 
-				// Always update Mesh-managed metadata fields
+				// Always update me.sh metadata fields
 				if (key === "Mesh Last Synced" || key === "Mesh URL" || key === "Mesh ID") {
 					if (fm[key] !== newValue) {
 						fm[key] = newValue;
@@ -179,14 +220,14 @@ export class SyncEngine {
 					continue;
 				}
 
-				// Field doesn't exist in Obsidian yet -- add it
+				// Field doesn't exist in Obsidian yet — add it
 				if (currentValue === undefined || currentValue === null || currentValue === "") {
 					fm[key] = newValue;
 					updated = true;
 					continue;
 				}
 
-				// Field exists and hasn't been manually edited (matches last sync)
+				// Field exists and hasn't been manually edited (matches last sync value)
 				if (JSON.stringify(currentValue) === JSON.stringify(lastSyncedValue)) {
 					if (JSON.stringify(currentValue) !== JSON.stringify(newValue)) {
 						fm[key] = newValue;
@@ -195,17 +236,17 @@ export class SyncEngine {
 					continue;
 				}
 
-				// Field was manually edited -- apply conflict resolution
+				// Field was manually edited — apply conflict resolution
 				if (this.plugin.settings.conflictResolution === "mesh") {
 					fm[key] = newValue;
 					updated = true;
 				} else if (this.plugin.settings.conflictResolution === "ask") {
-					this.log(`Conflict on ${file.basename}.${key}: Obsidian="${currentValue}" vs Mesh="${newValue}"`);
+					this.log(`[conflict] ${file.basename} / ${key}: obsidian="${currentValue}" vs me.sh="${newValue}"`);
 				}
 				// "obsidian" mode: keep current value (do nothing)
 			}
 
-			// Update source field
+			// Update source field if migrating from Google Contacts
 			if (fm["Source"] === "Google Contacts") {
 				fm["Source"] = "Mesh";
 				updated = true;
@@ -213,6 +254,36 @@ export class SyncEngine {
 		});
 
 		return updated;
+	}
+
+	/**
+	 * Log what would change for a file (dry-run mode)
+	 */
+	private logDryRunUpdate(
+		file: TFile,
+		mapped: MappedContactData,
+		syncMeta: SyncMetadata
+	): void {
+		const fm = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter || {};
+		const contactId = String(mapped["Mesh ID"]);
+		const lastSynced = syncMeta.contacts[contactId] || {};
+		const changes: string[] = [];
+
+		for (const [key, newValue] of Object.entries(mapped)) {
+			if (newValue === undefined) continue;
+			if (key === "Mesh Last Synced") continue; // always changes, skip noise
+
+			const currentValue = fm[key];
+			if (currentValue === undefined || currentValue === null || currentValue === "") {
+				changes.push(`  + ${key}: ${JSON.stringify(newValue)}`);
+			} else if (JSON.stringify(currentValue) !== JSON.stringify(newValue)) {
+				changes.push(`  ~ ${key}: ${JSON.stringify(currentValue)} → ${JSON.stringify(newValue)}`);
+			}
+		}
+
+		if (changes.length > 0) {
+			this.log(`[dry-run] ${file.basename}:\n${changes.join("\n")}`);
+		}
 	}
 
 	/**
@@ -318,7 +389,7 @@ export class SyncEngine {
 
 	private log(message: string) {
 		if (this.plugin.settings.debugLogging) {
-			console.log("[Mesh Sync]", message);
+			console.log("[Me.sh Sync]", message);
 		}
 	}
 }

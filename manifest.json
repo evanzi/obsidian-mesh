@@ -1,9 +1,9 @@
 {
   "id": "obsidian-mesh",
-  "name": "Mesh",
+  "name": "Me.sh Sync for Obsidian",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
-  "description": "Sync your contacts from Mesh (me.sh) into Obsidian. View relationship insights, upcoming birthdays, and open contacts directly in Mesh.",
+  "description": "Sync your contacts from me.sh into Obsidian. Enrich your People notes with contact data, social profiles, and relationship insights.",
   "author": "Evan Zimmerman",
   "authorUrl": "https://github.com/evanzi",
   "isDesktopOnly": true
