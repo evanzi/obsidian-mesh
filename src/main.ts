@@ -12,6 +12,8 @@ export default class MeshPlugin extends Plugin {
 	auth: MeshAuth;
 	api: MeshAPI;
 	syncEngine: SyncEngine;
+	private autoSyncInterval: number | null = null;
+	private isSyncing = false;
 
 	async onload() {
 		await this.loadSettings();
@@ -57,10 +59,51 @@ export default class MeshPlugin extends Plugin {
 
 		this.addSettingTab(new MeshSettingTab(this.app, this));
 
-		// Plugin ready
+		// Start auto-sync if enabled
+		this.startAutoSync();
 	}
 
+	/**
+	 * Start or restart the auto-sync interval timer.
+	 * Called on load and whenever settings change.
+	 */
+	startAutoSync() {
+		// Clear any existing timer
+		this.stopAutoSync();
+
+		if (!this.settings.autoSync || this.settings.syncInterval <= 0) {
+			return;
+		}
+
+		const intervalMs = this.settings.syncInterval * 60 * 1000;
+		this.autoSyncInterval = window.setInterval(async () => {
+			await this.runBackgroundSync();
+		}, intervalMs);
+
+		// Register with Obsidian so it cleans up on unload
+		this.registerInterval(this.autoSyncInterval);
+	}
+
+	/**
+	 * Stop the auto-sync interval timer.
+	 */
+	private stopAutoSync() {
+		if (this.autoSyncInterval !== null) {
+			window.clearInterval(this.autoSyncInterval);
+			this.autoSyncInterval = null;
+		}
+	}
+
+	/**
+	 * Manual sync -- shows notices for progress and results.
+	 */
 	async runSync() {
+		if (this.isSyncing) {
+			new Notice("Me.sh: Sync already in progress");
+			return;
+		}
+
+		this.isSyncing = true;
 		try {
 			new Notice("Me.sh: Starting sync...");
 			const result = await this.syncEngine.sync();
@@ -76,11 +119,33 @@ export default class MeshPlugin extends Plugin {
 			} else {
 				new Notice(`Me.sh: Sync failed - ${error instanceof Error ? error.message : "unknown error"}`);
 			}
+		} finally {
+			this.isSyncing = false;
+		}
+	}
+
+	/**
+	 * Background sync -- silent on success, only shows notice on errors.
+	 */
+	private async runBackgroundSync() {
+		if (this.isSyncing) return;
+
+		this.isSyncing = true;
+		try {
+			const result = await this.syncEngine.sync();
+			if (result.errors.length > 0) {
+				new Notice(`Me.sh: Background sync completed with ${result.errors.length} errors`);
+			}
+		} catch (error) {
+			console.error("[Me.sh Sync] background sync failed:", error);
+			// Don't show auth errors on background sync -- just log them
+		} finally {
+			this.isSyncing = false;
 		}
 	}
 
 	onunload() {
-		// Plugin unloaded
+		this.stopAutoSync();
 	}
 
 	async loadSettings() {
