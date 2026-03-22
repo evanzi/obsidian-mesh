@@ -1,13 +1,14 @@
-import { TFile, TFolder, normalizePath } from "obsidian";
+import { TFile, TFolder, normalizePath, Notice } from "obsidian";
 import type MeshPlugin from "./main";
 import { ContactMapper, MESH_MANAGED_FIELDS } from "./contact-mapper";
 import type { MappedContactData } from "./contact-mapper";
-import type { MeshContactList, MeshGroup } from "./mesh-api";
+import type { MeshContactList, MeshContactDetail, MeshGroup } from "./mesh-api";
 
 export interface SyncResult {
 	created: number;
 	updated: number;
 	skipped: number;
+	filtered: number;
 	errors: string[];
 }
 
@@ -15,6 +16,9 @@ interface SyncMetadata {
 	lastSync: string;
 	contacts: Record<string, Record<string, unknown>>; // meshId -> last-synced field values
 }
+
+// Small delay between detail API calls to avoid rate limiting
+const DETAIL_FETCH_DELAY_MS = 100;
 
 export class SyncEngine {
 	private plugin: MeshPlugin;
@@ -24,13 +28,19 @@ export class SyncEngine {
 	}
 
 	async sync(): Promise<SyncResult> {
-		const result: SyncResult = { created: 0, updated: 0, skipped: 0, errors: [] };
+		const result: SyncResult = { created: 0, updated: 0, skipped: 0, filtered: 0, errors: [] };
 
-		// Fetch data from Mesh
-		this.log("Fetching contacts from Mesh...");
-		const contacts = await this.plugin.api.getAllContacts();
-		this.log(`Fetched ${contacts.length} contacts`);
+		// Step 1: Fetch contact list (fast, paginated)
+		this.log("Fetching contact list from Mesh...");
+		const contactList = await this.plugin.api.getAllContacts();
+		this.log(`Fetched ${contactList.length} contacts from list endpoint`);
 
+		// Step 2: Filter out non-person entries
+		const realContacts = contactList.filter((c) => ContactMapper.isRealContact(c));
+		result.filtered = contactList.length - realContacts.length;
+		this.log(`Filtered to ${realContacts.length} real contacts (${result.filtered} skipped)`);
+
+		// Step 3: Fetch groups
 		const groups = await this.plugin.api.getGroups();
 		this.log(`Fetched ${groups.length} groups`);
 
@@ -42,15 +52,25 @@ export class SyncEngine {
 		const existingFiles = await this.getExistingPeopleFiles(folderPath);
 		const syncMeta = await this.loadSyncMetadata();
 
-		// Process each contact
-		for (const contact of contacts) {
+		// Step 4: Fetch detail for each contact and sync
+		for (let i = 0; i < realContacts.length; i++) {
+			const listContact = realContacts[i];
+
+			// Progress update every 50 contacts
+			if (i > 0 && i % 50 === 0) {
+				new Notice(`Mesh: Syncing ${i}/${realContacts.length}...`);
+			}
+
 			try {
-				const mapped = ContactMapper.mapContact(contact, groups, this.plugin.settings);
-				const fileName = ContactMapper.getFileName(contact, this.plugin.settings.fileNameFormat);
+				// Fetch full detail for this contact
+				const detail = await this.plugin.api.getContactDetail(listContact.id);
+
+				const mapped = ContactMapper.mapContactDetail(detail, groups, this.plugin.settings);
+				const fileName = ContactMapper.getFileNameFromDetail(detail, this.plugin.settings.fileNameFormat);
 				const filePath = normalizePath(`${folderPath}/${fileName}.md`);
 
 				// Try to match to existing file
-				const existingFile = this.findMatchingFile(existingFiles, contact, mapped);
+				const existingFile = this.findMatchingFile(existingFiles, detail, mapped);
 
 				if (existingFile) {
 					const updated = await this.updateFile(existingFile, mapped, syncMeta);
@@ -64,10 +84,15 @@ export class SyncEngine {
 					result.created++;
 				}
 
-				// Store sync metadata for this contact
-				syncMeta.contacts[String(contact.id)] = { ...mapped } as Record<string, unknown>;
+				// Store sync metadata
+				syncMeta.contacts[String(detail.id)] = { ...mapped } as Record<string, unknown>;
+
+				// Rate limit delay
+				if (i < realContacts.length - 1) {
+					await this.delay(DETAIL_FETCH_DELAY_MS);
+				}
 			} catch (error) {
-				const msg = `Failed to sync ${contact.display_name}: ${error}`;
+				const msg = `Failed to sync ${listContact.display_name}: ${error}`;
 				this.log(msg);
 				result.errors.push(msg);
 			}
@@ -77,16 +102,16 @@ export class SyncEngine {
 		syncMeta.lastSync = new Date().toISOString();
 		await this.saveSyncMetadata(syncMeta);
 
-		this.log(`Sync complete: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped, ${result.errors.length} errors`);
+		this.log(`Sync complete: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped, ${result.filtered} filtered, ${result.errors.length} errors`);
 		return result;
 	}
 
 	/**
-	 * Find an existing file that matches a Mesh contact
+	 * Find an existing file that matches a Mesh contact (detail endpoint)
 	 */
 	private findMatchingFile(
 		files: Map<string, TFile>,
-		contact: MeshContactList,
+		contact: MeshContactDetail,
 		mapped: MappedContactData
 	): TFile | null {
 		// Match by Mesh ID first
@@ -99,19 +124,26 @@ export class SyncEngine {
 		if (mapped["Email (Private)"]) {
 			for (const [_, file] of files) {
 				const fm = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
-				if (fm?.["Email (Private)"] === mapped["Email (Private)"]) return file;
+				const existingEmail = fm?.["Email (Private)"];
+				if (!existingEmail) continue;
+
+				// Handle both single email and comma-separated emails
+				const existingEmails = String(existingEmail).split(",").map((e) => e.trim().toLowerCase());
+				if (existingEmails.includes(mapped["Email (Private)"]!.toLowerCase())) {
+					return file;
+				}
 			}
 		}
 
 		// Match by file name (full name)
 		const possibleNames = [
-			contact.full_name,
-			contact.display_name,
-			`${contact.first_name} ${contact.last_name}`,
+			contact.fullName,
+			contact.displayName,
+			`${contact.firstName} ${contact.lastName}`,
 		].filter((n) => n && n.trim() && n.trim() !== ".");
 
 		for (const name of possibleNames) {
-			const file = files.get(name!);
+			const file = files.get(name!.trim());
 			if (file) return file;
 		}
 
@@ -168,7 +200,6 @@ export class SyncEngine {
 					fm[key] = newValue;
 					updated = true;
 				} else if (this.plugin.settings.conflictResolution === "ask") {
-					// TODO: Add to conflict queue for review
 					this.log(`Conflict on ${file.basename}.${key}: Obsidian="${currentValue}" vs Mesh="${newValue}"`);
 				}
 				// "obsidian" mode: keep current value (do nothing)
@@ -188,7 +219,6 @@ export class SyncEngine {
 	 * Create a new contact file
 	 */
 	private async createFile(filePath: string, mapped: MappedContactData): Promise<void> {
-		// Build frontmatter
 		const lines: string[] = ["---"];
 		const fieldOrder = [
 			"Prof. Contact",
@@ -219,7 +249,6 @@ export class SyncEngine {
 			"Photo",
 		];
 
-		// Set defaults for standard fields
 		const data: Record<string, unknown> = {
 			"Prof. Contact": false,
 			"Met?": "Empty",
@@ -281,6 +310,10 @@ export class SyncEngine {
 		const data = (await this.plugin.loadData()) || {};
 		data.syncMeta = meta;
 		await this.plugin.saveData(data);
+	}
+
+	private delay(ms: number): Promise<void> {
+		return new Promise((resolve) => setTimeout(resolve, ms));
 	}
 
 	private log(message: string) {

@@ -1,4 +1,4 @@
-import type { MeshContactList, MeshContactInfo, MeshGroup } from "./mesh-api";
+import type { MeshContactDetail, MeshContactList, MeshGroup } from "./mesh-api";
 import type { MeshSettings } from "./settings";
 
 /**
@@ -49,17 +49,10 @@ export interface MappedContactData {
 
 export class ContactMapper {
 	/**
-	 * Extract the first info value matching a type from the contact's information array
+	 * Map a Mesh contact detail (camelCase, rich data) to Obsidian frontmatter fields
 	 */
-	private static getInfo(contact: MeshContactList, type: string): string | undefined {
-		return contact.information?.find((i) => i.type === type)?.value;
-	}
-
-	/**
-	 * Map a Mesh contact (list endpoint, snake_case) to Obsidian frontmatter fields
-	 */
-	static mapContact(
-		contact: MeshContactList,
+	static mapContactDetail(
+		contact: MeshContactDetail,
 		groups: MeshGroup[],
 		settings: MeshSettings
 	): MappedContactData {
@@ -71,76 +64,134 @@ export class ContactMapper {
 			"Mesh Last Synced": now,
 		};
 
-		// Email -- type "email" in information[]
-		const email = this.getInfo(contact, "email");
-		if (email) data["Email (Private)"] = email;
+		// Nickname
+		if (contact.nickname) data.Nickname = contact.nickname;
 
-		// Phone -- type "phone" in information[]
-		const phone = this.getInfo(contact, "phone");
-		if (phone) data.Phone = phone;
+		// Email -- from information[] array
+		const emailInfo = contact.information?.find((i) => i.type === "email");
+		if (emailInfo) data["Email (Private)"] = emailInfo.value;
 
-		// Social profiles -- stored as information[] items with type = platform name
+		// Phone -- from information[] array
+		const phoneInfo = contact.information?.find((i) => i.type === "phone");
+		if (phoneInfo) data.Phone = phoneInfo.value;
+
+		// Company and Title from organizations
+		const currentOrg = contact.organizations?.find((o) => o.current !== false)
+			|| contact.organizations?.[0];
+		if (currentOrg) {
+			if (currentOrg.name) data.Company = currentOrg.name;
+			if (currentOrg.title) data.Title = [currentOrg.title];
+		} else if (contact.organization) {
+			data.Company = contact.organization;
+		}
+		// Fallback: top-level title field
+		if (!data.Title && contact.title) {
+			data.Title = [contact.title];
+		}
+
+		// Birthday
+		if (contact.birthday?.month && contact.birthday?.day) {
+			const y = contact.birthday.year || "0000";
+			const m = String(contact.birthday.month).padStart(2, "0");
+			const d = String(contact.birthday.day).padStart(2, "0");
+			data.Birthday = `${y}-${m}-${d}`;
+		}
+
+		// Location -- primaryLocation or first location
+		if (contact.primaryLocation) {
+			// primaryLocation is a string like "City, State" or "City, Country"
+			const parts = contact.primaryLocation.split(",").map((s) => s.trim());
+			if (parts[0]) data.City = parts[0];
+			if (parts.length > 1) data.Country = parts[parts.length - 1];
+		}
+
+		// Social profiles -- top-level URL fields on the detail response
 		if (settings.syncSocialProfiles) {
-			for (const info of contact.information || []) {
-				switch (info.type) {
-					case "linkedin":
+			if (contact.linkedinURL) data.LinkedIn = contact.linkedinURL;
+			if (contact.twitterURL) data.Twitter = contact.twitterURL;
+			if (contact.githubURL) data.GitHub = contact.githubURL;
+			if (contact.instagramURL) data.Instagram = contact.instagramURL;
+
+			// Fallback: check information[] for social handles
+			if (!data.LinkedIn || !data.Twitter || !data.GitHub || !data.Instagram) {
+				for (const info of contact.information || []) {
+					if (!data.LinkedIn && info.type === "linkedin") {
 						data.LinkedIn = info.value.startsWith("http")
 							? info.value
 							: `https://linkedin.com/in/${info.value}`;
-						break;
-					case "twitter":
+					} else if (!data.Twitter && info.type === "twitter") {
 						data.Twitter = info.value.startsWith("http")
 							? info.value
 							: `https://x.com/${info.value}`;
-						break;
-					case "github":
+					} else if (!data.GitHub && info.type === "github") {
 						data.GitHub = info.value.startsWith("http")
 							? info.value
 							: `https://github.com/${info.value}`;
-						break;
-					case "instagram":
+					} else if (!data.Instagram && info.type === "instagram") {
 						data.Instagram = info.value.startsWith("http")
 							? info.value
 							: `https://instagram.com/${info.value}`;
-						break;
+					}
 				}
 			}
 		}
 
-		// Relationship strength from score
-		if (settings.syncRelationshipData && contact.score > 0) {
-			if (contact.score >= 70) data["Relationship Strength"] = "Strong";
-			else if (contact.score >= 40) data["Relationship Strength"] = "Medium";
-			else data["Relationship Strength"] = "Weak";
+		// Relationship data
+		if (settings.syncRelationshipData) {
+			if (contact.score > 0) {
+				if (contact.score >= 70) data["Relationship Strength"] = "Strong";
+				else if (contact.score >= 40) data["Relationship Strength"] = "Medium";
+				else data["Relationship Strength"] = "Weak";
+			}
+
+			// Last interaction date (unix timestamp to ISO date)
+			if (contact.lastInteractionDate) {
+				data["Last Contacted"] = new Date(contact.lastInteractionDate * 1000)
+					.toISOString()
+					.slice(0, 10);
+			}
 		}
 
-		// Groups
+		// Groups -- from detail endpoint's lists[] and/or the groups parameter
 		if (settings.syncTagsAndGroups) {
-			const contactGroups = groups
-				.filter((g) => g.contact_ids?.includes(contact.id))
-				.map((g) => g.title);
+			// Detail endpoint includes lists[] directly on the contact
+			const contactGroups: string[] = [];
+			if (contact.lists?.length) {
+				for (const list of contact.lists) {
+					contactGroups.push(list.title);
+				}
+			}
+			// Also check groups fetched separately (may have more complete data)
+			if (groups?.length) {
+				for (const g of groups) {
+					if (g.contact_ids?.includes(contact.id) && !contactGroups.includes(g.title)) {
+						contactGroups.push(g.title);
+					}
+				}
+			}
 			if (contactGroups.length > 0) data["Mesh Groups"] = contactGroups;
 		}
 
 		// Photo
-		if (settings.syncPhotos && contact.avatar_url) {
-			data.Photo = contact.avatar_url;
+		if (settings.syncPhotos && contact.avatarURL) {
+			data.Photo = contact.avatarURL;
 		}
 
 		return data;
 	}
 
 	/**
-	 * Generate the display name for a file based on settings.
-	 * Filters out empty names and placeholder dots.
+	 * Generate the display name for a file based on the detail endpoint data
 	 */
-	static getFileName(contact: MeshContactList, format: MeshSettings["fileNameFormat"]): string {
-		const first = (contact.first_name || "").trim();
-		const last = (contact.last_name || "").trim();
-		const full = (contact.full_name || "").trim();
-		const display = (contact.display_name || "").trim();
+	static getFileNameFromDetail(
+		contact: MeshContactDetail,
+		format: MeshSettings["fileNameFormat"]
+	): string {
+		const first = (contact.firstName || "").trim();
+		const last = (contact.lastName || "").trim();
+		const full = (contact.fullName || "").trim();
+		const display = (contact.displayName || "").trim();
 
-		// Filter out contacts that are just an email or have no real name
 		const hasRealName = (first && first !== ".") || (last && last !== ".");
 
 		switch (format) {
@@ -152,13 +203,34 @@ export class ContactMapper {
 				break;
 		}
 
-		// Default: use full_name, then display_name
-		if (full && full !== ".") return full;
+		if (full && full !== "." && full.trim() !== "") return full;
 		if (display) return display;
 
 		// Last resort: use email or ID
-		const email = this.getInfo(contact, "email");
+		const email = contact.information?.find((i) => i.type === "email")?.value;
 		if (email) return email;
 		return `Mesh Contact ${contact.id}`;
+	}
+
+	/**
+	 * Check if a contact from the list endpoint looks like a real person
+	 * (not a shared mailbox, crash reporter, etc.)
+	 */
+	static isRealContact(contact: MeshContactList): boolean {
+		const name = (contact.display_name || "").trim();
+		const firstName = (contact.first_name || "").trim();
+		const lastName = (contact.last_name || "").trim();
+
+		// Has a real first and last name
+		if (firstName && firstName !== "." && lastName && lastName !== ".") {
+			return true;
+		}
+
+		// Has a reasonable full name (not just an email)
+		if (name && !name.includes("@") && name !== "." && name.length > 1) {
+			return true;
+		}
+
+		return false;
 	}
 }
