@@ -453,8 +453,10 @@ export class SyncEngine {
 				for (const item of value) {
 					lines.push(`  - ${item}`);
 				}
-			} else if (typeof value === "string" && value.startsWith("http")) {
-				lines.push(`${key}: "${value}"`);
+			} else if (typeof value === "string" && this.needsQuoting(value)) {
+				// Escape internal double quotes and wrap in quotes
+				const escaped = value.replace(/"/g, '\\"');
+				lines.push(`${key}: "${escaped}"`);
 			} else {
 				lines.push(`${key}: ${value}`);
 			}
@@ -497,6 +499,20 @@ export class SyncEngine {
 		const data = (await this.plugin.loadData()) || {};
 		data.syncMeta = meta;
 		await this.plugin.saveData(data);
+	}
+
+	/**
+	 * Check if a YAML value needs to be wrapped in quotes.
+	 * URLs, strings with special YAML characters, or long strings need quoting.
+	 */
+	private needsQuoting(value: string): boolean {
+		if (value.startsWith("http")) return true;
+		if (value.length > 80) return true;
+		if (/[:{}\[\]&*?|>!%@`#,]/.test(value)) return true;
+		if (/^['"]/.test(value)) return true;
+		// em dash and other unicode punctuation
+		if (/[\u2014\u2013\u2018\u2019\u201C\u201D]/.test(value)) return true;
+		return false;
 	}
 
 	private delay(ms: number): Promise<void> {
