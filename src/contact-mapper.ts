@@ -2,54 +2,58 @@ import type { MeshContactDetail, MeshContactList, MeshGroup } from "./mesh-api";
 import type { MeshSettings } from "./settings";
 
 /**
- * Fields that the plugin manages. Manual edits to other fields are never touched.
+ * Fields sourced from me.sh enrichment engine (can be wrong -- matched to wrong person).
+ * These get special handling: only fill empty fields, and when conflicting with
+ * existing data, write to a parallel "(Me.sh)" field instead of overwriting.
  */
-export const MESH_MANAGED_FIELDS = [
-	"Mesh ID",
-	"Mesh URL",
-	"Mesh Last Synced",
-	"Last Contacted",
-	"Relationship Strength",
-	"Mesh Tags",
-	"Mesh Groups",
-	"LinkedIn",
-	"Twitter",
-	"GitHub",
-	"Instagram",
-	"Photo",
+export const ENRICHED_FIELDS = [
+	"Company",
+	"Title",
+	"City",
+	"Country",
+	"Birthday",
 ] as const;
 
+export type EnrichedField = typeof ENRICHED_FIELDS[number];
+
 export interface MappedContactData {
-	// Mesh-specific fields
+	// Mesh-specific fields (always written)
 	"Mesh ID": number;
 	"Mesh URL": string;
 	"Mesh Last Synced": string;
 
-	// Mapped to existing schema
+	// Direct integration data (reliable -- from connected services)
 	Nickname?: string;
 	"Email (Private)"?: string;
 	Phone?: string;
-	Company?: string;
-	Title?: string[];
-	Birthday?: string;
-	City?: string;
-	Country?: string;
-
-	// Optional Mesh fields
 	LinkedIn?: string;
 	Twitter?: string;
 	GitHub?: string;
 	Instagram?: string;
 	"Last Contacted"?: string;
 	"Relationship Strength"?: string;
-	"Mesh Tags"?: string[];
 	"Mesh Groups"?: string[];
 	Photo?: string;
+
+	// Enriched data (potentially unreliable -- from me.sh enrichment engine)
+	Company?: string;
+	Title?: string[];
+	Birthday?: string;
+	City?: string;
+	Country?: string;
 }
 
 export class ContactMapper {
 	/**
-	 * Map a Mesh contact detail (camelCase, rich data) to Obsidian frontmatter fields
+	 * Check if a field is enriched (potentially unreliable)
+	 */
+	static isEnrichedField(key: string): boolean {
+		return (ENRICHED_FIELDS as readonly string[]).includes(key);
+	}
+
+	/**
+	 * Map a me.sh contact detail to Obsidian frontmatter fields.
+	 * Separates direct integration data from enriched data.
 	 */
 	static mapContactDetail(
 		contact: MeshContactDetail,
@@ -64,84 +68,51 @@ export class ContactMapper {
 			"Mesh Last Synced": now,
 		};
 
+		// ── Direct integration data (reliable) ──
+
 		// Nickname
 		if (contact.nickname) data.Nickname = contact.nickname;
 
-		// Email -- from information[] array
+		// Email -- from information[] (direct from connected accounts)
 		const emailInfo = contact.information?.find((i) => i.type === "email");
 		if (emailInfo) data["Email (Private)"] = emailInfo.value;
 
-		// Phone -- from information[] array
+		// Phone -- from information[] (direct from address book)
 		const phoneInfo = contact.information?.find((i) => i.type === "phone");
 		if (phoneInfo) data.Phone = phoneInfo.value;
 
-		// Company and Title from organizations
-		// Current org = one with no end date (still active)
-		const currentOrg = contact.organizations?.find((o) => !o.end)
-			|| contact.organizations?.[0];
-		if (currentOrg) {
-			if (currentOrg.name) data.Company = currentOrg.name;
-			if (currentOrg.title) data.Title = [currentOrg.title];
-		} else if (contact.organization) {
-			data.Company = contact.organization;
-		}
-		// Fallback: top-level title field
-		if (!data.Title && contact.title) {
-			data.Title = [contact.title];
-		}
-
-		// Birthday
-		if (contact.birthday?.month && contact.birthday?.day) {
-			const y = contact.birthday.year || "0000";
-			const m = String(contact.birthday.month).padStart(2, "0");
-			const d = String(contact.birthday.day).padStart(2, "0");
-			data.Birthday = `${y}-${m}-${d}`;
-		}
-
-		// Location -- primaryLocation has varying shapes (city/region or approximate)
-		const loc = contact.primaryLocation || contact.locations?.[0];
-		if (loc) {
-			// Prefer city field, fall back to approximate (which may be "City, State")
-			if (loc.city) {
-				data.City = loc.region ? `${loc.city}, ${loc.region}` : loc.city;
-			} else if (loc.approximate) {
-				data.City = loc.approximate;
-			}
-			if (loc.country) data.Country = loc.country;
-		}
-
-		// Social profiles -- top-level URL fields on the detail response
+		// Social profiles -- from information[] (direct from integrations)
 		if (settings.syncSocialProfiles) {
+			// Top-level URL fields (may come from enrichment, but the URL itself
+			// is usually correct even when org data is wrong)
 			if (contact.linkedinURL) data.LinkedIn = contact.linkedinURL;
 			if (contact.twitterURL) data.Twitter = contact.twitterURL;
 			if (contact.githubURL) data.GitHub = contact.githubURL;
 			if (contact.instagramURL) data.Instagram = contact.instagramURL;
 
-			// Fallback: check information[] for social handles
-			if (!data.LinkedIn || !data.Twitter || !data.GitHub || !data.Instagram) {
-				for (const info of contact.information || []) {
-					if (!data.LinkedIn && info.type === "linkedin") {
-						data.LinkedIn = info.value.startsWith("http")
-							? info.value
-							: `https://linkedin.com/in/${info.value}`;
-					} else if (!data.Twitter && info.type === "twitter") {
-						data.Twitter = info.value.startsWith("http")
-							? info.value
-							: `https://x.com/${info.value}`;
-					} else if (!data.GitHub && info.type === "github") {
-						data.GitHub = info.value.startsWith("http")
-							? info.value
-							: `https://github.com/${info.value}`;
-					} else if (!data.Instagram && info.type === "instagram") {
-						data.Instagram = info.value.startsWith("http")
-							? info.value
-							: `https://instagram.com/${info.value}`;
-					}
+			// Fallback: social handles from information[]
+			for (const info of contact.information || []) {
+				if (!data.LinkedIn && info.type === "linkedin") {
+					data.LinkedIn = info.value.startsWith("http")
+						? info.value
+						: `https://linkedin.com/in/${info.value}`;
+				} else if (!data.Twitter && info.type === "twitter") {
+					data.Twitter = info.value.startsWith("http")
+						? info.value
+						: `https://x.com/${info.value}`;
+				} else if (!data.GitHub && info.type === "github") {
+					data.GitHub = info.value.startsWith("http")
+						? info.value
+						: `https://github.com/${info.value}`;
+				} else if (!data.Instagram && info.type === "instagram") {
+					data.Instagram = info.value.startsWith("http")
+						? info.value
+						: `https://instagram.com/${info.value}`;
 				}
 			}
 		}
 
-		// Relationship data
+		// Relationship data (me.sh's own tracking -- reliable)
 		if (settings.syncRelationshipData) {
 			if (contact.score > 0) {
 				if (contact.score >= 70) data["Relationship Strength"] = "Strong";
@@ -149,7 +120,6 @@ export class ContactMapper {
 				else data["Relationship Strength"] = "Weak";
 			}
 
-			// Last interaction date (unix timestamp to ISO date)
 			if (contact.lastInteractionDate) {
 				data["Last Contacted"] = new Date(contact.lastInteractionDate * 1000)
 					.toISOString()
@@ -157,16 +127,14 @@ export class ContactMapper {
 			}
 		}
 
-		// Groups -- from detail endpoint's lists[] and/or the groups parameter
+		// Groups (user-managed in me.sh -- reliable)
 		if (settings.syncTagsAndGroups) {
-			// Detail endpoint includes lists[] directly on the contact
 			const contactGroups: string[] = [];
 			if (contact.lists?.length) {
 				for (const list of contact.lists) {
 					contactGroups.push(list.title);
 				}
 			}
-			// Also check groups fetched separately (may have more complete data)
 			if (groups?.length) {
 				for (const g of groups) {
 					if (g.contact_ids?.includes(contact.id) && !contactGroups.includes(g.title)) {
@@ -182,12 +150,43 @@ export class ContactMapper {
 			data.Photo = contact.avatarURL;
 		}
 
+		// ── Enriched data (potentially unreliable) ──
+
+		// Company and Title from organizations
+		const currentOrg = contact.organizations?.find((o) => !o.end)
+			|| contact.organizations?.[0];
+		if (currentOrg) {
+			if (currentOrg.name) data.Company = currentOrg.name;
+			if (currentOrg.title) data.Title = [currentOrg.title];
+		} else if (contact.organization) {
+			data.Company = contact.organization;
+		}
+		if (!data.Title && contact.title) {
+			data.Title = [contact.title];
+		}
+
+		// Birthday
+		if (contact.birthday?.month && contact.birthday?.day) {
+			const y = contact.birthday.year || "0000";
+			const m = String(contact.birthday.month).padStart(2, "0");
+			const d = String(contact.birthday.day).padStart(2, "0");
+			data.Birthday = `${y}-${m}-${d}`;
+		}
+
+		// Location
+		const loc = contact.primaryLocation || contact.locations?.[0];
+		if (loc) {
+			if (loc.city) {
+				data.City = loc.region ? `${loc.city}, ${loc.region}` : loc.city;
+			} else if (loc.approximate) {
+				data.City = loc.approximate;
+			}
+			if (loc.country) data.Country = loc.country;
+		}
+
 		return data;
 	}
 
-	/**
-	 * Generate the display name for a file based on the detail endpoint data
-	 */
 	/**
 	 * Collapse multiple spaces into one
 	 */
@@ -195,6 +194,9 @@ export class ContactMapper {
 		return s.replace(/\s+/g, " ").trim();
 	}
 
+	/**
+	 * Generate the display name for a file
+	 */
 	static getFileNameFromDetail(
 		contact: MeshContactDetail,
 		format: MeshSettings["fileNameFormat"]
@@ -218,7 +220,6 @@ export class ContactMapper {
 		if (full && full !== ".") return full;
 		if (display) return display;
 
-		// Last resort: use email or ID
 		const email = contact.information?.find((i) => i.type === "email")?.value;
 		if (email) return email;
 		return `Mesh Contact ${contact.id}`;
@@ -226,31 +227,21 @@ export class ContactMapper {
 
 	/**
 	 * Check if a contact from the list endpoint looks like a real person
-	 * (not a shared mailbox, phone number, business entity, etc.)
 	 */
 	static isRealContact(contact: MeshContactList): boolean {
 		const name = (contact.display_name || "").trim();
 		const firstName = (contact.first_name || "").trim();
 		const lastName = (contact.last_name || "").trim();
 
-		// Reject empty / dot-only names
 		if (!name || name === ".") return false;
-
-		// Reject email addresses as display names
 		if (name.includes("@")) return false;
-
-		// Reject phone numbers (all digits, dashes, plus, spaces, parens)
 		if (/^[\d\s\-+().]+$/.test(name)) return false;
-
-		// Reject names starting with special characters
 		if (/^['+\-]/.test(name)) return false;
 
-		// Must have a real first OR last name (not just dots)
 		if (firstName && firstName !== "." && lastName && lastName !== ".") {
 			return true;
 		}
 
-		// Accept if display name looks like a person name (at least 2 chars, no @)
 		if (name.length > 1) {
 			return true;
 		}

@@ -1,6 +1,6 @@
 import { TFile, TFolder, normalizePath, Notice } from "obsidian";
 import type MeshPlugin from "./main";
-import { ContactMapper } from "./contact-mapper";
+import { ContactMapper, ENRICHED_FIELDS } from "./contact-mapper";
 import type { MappedContactData } from "./contact-mapper";
 import type { MeshContactList, MeshContactDetail, MeshGroup } from "./mesh-api";
 
@@ -190,8 +190,11 @@ export class SyncEngine {
 
 	/**
 	 * Update an existing file with me.sh data.
-	 * Only touches fields that me.sh provides data for.
-	 * Any fields not in the mapped data are left completely untouched.
+	 *
+	 * Direct fields: standard sync behavior (fill empty, conflict resolution).
+	 * Enriched fields (Company, Title, City, Country, Birthday): never overwrite
+	 * existing data. When me.sh has different data, write to a parallel
+	 * "Field (Me.sh)" field so the user can compare both values.
 	 */
 	private async updateFile(
 		file: TFile,
@@ -204,12 +207,8 @@ export class SyncEngine {
 			const contactId = String(mapped["Mesh ID"]);
 			const lastSynced = syncMeta.contacts[contactId] || {};
 
-			// Only iterate over fields that me.sh provides — everything else is untouched
 			for (const [key, newValue] of Object.entries(mapped)) {
 				if (newValue === undefined) continue;
-
-				const currentValue = fm[key];
-				const lastSyncedValue = lastSynced[key];
 
 				// Always update me.sh metadata fields
 				if (key === "Mesh Last Synced" || key === "Mesh URL" || key === "Mesh ID") {
@@ -220,30 +219,61 @@ export class SyncEngine {
 					continue;
 				}
 
-				// Field doesn't exist in Obsidian yet — add it
-				if (currentValue === undefined || currentValue === null || currentValue === "") {
-					fm[key] = newValue;
-					updated = true;
-					continue;
-				}
+				const currentValue = fm[key];
+				const isEnriched = ContactMapper.isEnrichedField(key);
 
-				// Field exists and hasn't been manually edited (matches last sync value)
-				if (JSON.stringify(currentValue) === JSON.stringify(lastSyncedValue)) {
-					if (JSON.stringify(currentValue) !== JSON.stringify(newValue)) {
+				if (isEnriched) {
+					// ── Enriched field handling ──
+					// Empty in Obsidian → fill it
+					if (currentValue === undefined || currentValue === null || currentValue === "") {
 						fm[key] = newValue;
 						updated = true;
+						continue;
 					}
-					continue;
-				}
 
-				// Field was manually edited — apply conflict resolution
-				if (this.plugin.settings.conflictResolution === "mesh") {
-					fm[key] = newValue;
-					updated = true;
-				} else if (this.plugin.settings.conflictResolution === "ask") {
-					this.log(`[conflict] ${file.basename} / ${key}: obsidian="${currentValue}" vs me.sh="${newValue}"`);
+					// Same value → nothing to do
+					if (JSON.stringify(currentValue) === JSON.stringify(newValue)) {
+						continue;
+					}
+
+					// Different value → write to parallel "(Me.sh)" field, keep original
+					const meshKey = `${key} (Me.sh)`;
+					const existingMeshValue = fm[meshKey];
+
+					// Only update the (Me.sh) field if the value changed
+					if (JSON.stringify(existingMeshValue) !== JSON.stringify(newValue)) {
+						fm[meshKey] = newValue;
+						updated = true;
+						this.log(`[enriched conflict] ${file.basename} / ${key}: keeping "${currentValue}", adding "${key} (Me.sh)": "${newValue}"`);
+					}
+				} else {
+					// ── Direct field handling ──
+					const lastSyncedValue = lastSynced[key];
+
+					// Empty in Obsidian → fill it
+					if (currentValue === undefined || currentValue === null || currentValue === "") {
+						fm[key] = newValue;
+						updated = true;
+						continue;
+					}
+
+					// Same as last sync → safe to update from me.sh
+					if (JSON.stringify(currentValue) === JSON.stringify(lastSyncedValue)) {
+						if (JSON.stringify(currentValue) !== JSON.stringify(newValue)) {
+							fm[key] = newValue;
+							updated = true;
+						}
+						continue;
+					}
+
+					// Manually edited → apply conflict resolution
+					if (this.plugin.settings.conflictResolution === "mesh") {
+						fm[key] = newValue;
+						updated = true;
+					} else if (this.plugin.settings.conflictResolution === "ask") {
+						this.log(`[conflict] ${file.basename} / ${key}: obsidian="${currentValue}" vs me.sh="${newValue}"`);
+					}
 				}
-				// "obsidian" mode: keep current value (do nothing)
 			}
 
 			// Update source field if migrating from Google Contacts
@@ -265,19 +295,24 @@ export class SyncEngine {
 		syncMeta: SyncMetadata
 	): void {
 		const fm = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter || {};
-		const contactId = String(mapped["Mesh ID"]);
-		const lastSynced = syncMeta.contacts[contactId] || {};
 		const changes: string[] = [];
 
 		for (const [key, newValue] of Object.entries(mapped)) {
 			if (newValue === undefined) continue;
-			if (key === "Mesh Last Synced") continue; // always changes, skip noise
+			if (key === "Mesh Last Synced") continue;
 
 			const currentValue = fm[key];
-			if (currentValue === undefined || currentValue === null || currentValue === "") {
+			const isEmpty = currentValue === undefined || currentValue === null || currentValue === "";
+			const isEnriched = ContactMapper.isEnrichedField(key);
+
+			if (isEmpty) {
 				changes.push(`  + ${key}: ${JSON.stringify(newValue)}`);
 			} else if (JSON.stringify(currentValue) !== JSON.stringify(newValue)) {
-				changes.push(`  ~ ${key}: ${JSON.stringify(currentValue)} → ${JSON.stringify(newValue)}`);
+				if (isEnriched) {
+					changes.push(`  ≠ ${key}: keeping "${currentValue}" | would add "${key} (Me.sh)": ${JSON.stringify(newValue)}`);
+				} else {
+					changes.push(`  ~ ${key}: ${JSON.stringify(currentValue)} → ${JSON.stringify(newValue)}`);
+				}
 			}
 		}
 
