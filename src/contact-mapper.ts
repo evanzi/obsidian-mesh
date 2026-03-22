@@ -161,7 +161,10 @@ export class ContactMapper {
 		// ── Enriched data (potentially unreliable) ──
 
 		// Bio (from LinkedIn profile -- enriched)
-		if (contact.bio) data.Bio = contact.bio;
+		// Collapse to single line for YAML frontmatter compatibility
+		if (contact.bio) {
+			data.Bio = contact.bio.replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
+		}
 
 		// Company and Title from organizations
 		const currentOrg = contact.organizations?.find((o) => !o.end)
