@@ -173,7 +173,7 @@ export class MeshAuth {
 		// Fall back to reading fresh tokens from LevelDB
 		const tokens = await this.extractTokensFromLevelDB();
 		if (!tokens) {
-			throw new Error("Mesh auth: Could not find tokens. Is the Mesh app installed and logged in?");
+			throw new Error("Me.sh auth: Could not find tokens. Is the me.sh app installed and logged in?");
 		}
 
 		// If access token is still valid, use it
@@ -196,7 +196,7 @@ export class MeshAuth {
 			}
 		}
 
-		throw new Error("Mesh auth: Tokens expired. Please open the Mesh app and log in.");
+		throw new Error("Me.sh auth: Tokens expired. Please open the me.sh app and log in.");
 	}
 
 	/**

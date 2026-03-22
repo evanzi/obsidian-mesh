@@ -1,6 +1,6 @@
 import { TFile, TFolder, normalizePath, Notice } from "obsidian";
 import type MeshPlugin from "./main";
-import { ContactMapper, ENRICHED_FIELDS } from "./contact-mapper";
+import { ContactMapper } from "./contact-mapper";
 import type { MappedContactData } from "./contact-mapper";
 import type { MeshContactList, MeshContactDetail, MeshGroup } from "./mesh-api";
 
@@ -40,18 +40,18 @@ export class SyncEngine {
 		if (isUpdateOnly) this.log("=== UPDATE ONLY — no new files will be created ===");
 
 		// Step 1: Fetch contact list (fast, paginated)
-		this.log("Fetching contact list from me.sh...");
+		this.log("Fetching contact list from me.sh...", true);
 		const contactList = await this.plugin.api.getAllContacts();
-		this.log(`Fetched ${contactList.length} contacts from list endpoint`);
+		this.log(`Fetched ${contactList.length} contacts from list endpoint`, true);
 
 		// Step 2: Filter out non-person entries
 		const realContacts = contactList.filter((c) => ContactMapper.isRealContact(c));
 		result.filtered = contactList.length - realContacts.length;
-		this.log(`Filtered to ${realContacts.length} real contacts (${result.filtered} skipped)`);
+		this.log(`Filtered to ${realContacts.length} real contacts (${result.filtered} skipped)`, true);
 
 		// Step 3: Fetch groups
 		const groups = await this.plugin.api.getGroups();
-		this.log(`Fetched ${groups.length} groups`);
+		this.log(`Fetched ${groups.length} groups`, true);
 
 		// Ensure target folder exists
 		const folderPath = normalizePath(this.plugin.settings.peopleFolder);
@@ -61,7 +61,7 @@ export class SyncEngine {
 		const existingFiles = await this.getExistingPeopleFiles(folderPath);
 		const syncMeta = isDryRun ? { lastSync: "", contacts: {} } : await this.loadSyncMetadata();
 
-		this.log(`Found ${existingFiles.size} existing files in ${folderPath}`);
+		this.log(`Found ${existingFiles.size} existing files in ${folderPath}`, true);
 
 		// Step 4: Fetch detail for each contact and sync
 		for (let i = 0; i < realContacts.length; i++) {
@@ -97,7 +97,7 @@ export class SyncEngine {
 						}
 					}
 				} else if (isUpdateOnly) {
-					this.log(`[unmatched] ${detail.displayName} — no existing file found`);
+					this.log(`[unmatched] ${detail.displayName} — no existing file found`, true);
 					result.unmatched++;
 				} else {
 					if (isDryRun) {
@@ -520,7 +520,9 @@ export class SyncEngine {
 		return new Promise((resolve) => setTimeout(resolve, ms));
 	}
 
-	private log(message: string) {
+	/** Log to console. Always logs summaries and errors. Detail logs only in dry run. */
+	private log(message: string, detailOnly = false) {
+		if (detailOnly && !this.plugin.settings.dryRun) return;
 		console.log("[Me.sh Sync]", message);
 	}
 }

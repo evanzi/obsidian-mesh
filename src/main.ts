@@ -57,7 +57,7 @@ export default class MeshPlugin extends Plugin {
 
 		this.addSettingTab(new MeshSettingTab(this.app, this));
 
-		console.log("Me.sh Sync plugin loaded");
+		// Plugin ready
 	}
 
 	async runSync() {
@@ -70,7 +70,7 @@ export default class MeshPlugin extends Plugin {
 			if (result.errors.length > 0) parts.push(`${result.errors.length} errors`);
 			new Notice(`Me.sh: ${parts.join(", ")}`);
 		} catch (error) {
-			console.error("Mesh sync failed:", error);
+			console.error("[Me.sh Sync] failed:", error);
 			if (error instanceof Error && error.message.includes("auth")) {
 				new Notice("Me.sh: Please open the me.sh app and log in, then try again.");
 			} else {
@@ -80,7 +80,7 @@ export default class MeshPlugin extends Plugin {
 	}
 
 	onunload() {
-		console.log("Me.sh Sync plugin unloaded");
+		// Plugin unloaded
 	}
 
 	async loadSettings() {
