@@ -170,8 +170,16 @@ export class SyncEngine {
 			}
 		}
 
-		// Match by file name (normalize whitespace for comparison)
-		const normalize = (s: string) => s.replace(/\s+/g, " ").trim();
+		// Match by file name
+		// Normalize: collapse whitespace, case-insensitive
+		const normalize = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+
+		// Build a case-insensitive lookup from existing files
+		const filesLower = new Map<string, TFile>();
+		for (const [name, file] of files) {
+			filesLower.set(name.toLowerCase(), file);
+		}
+
 		const possibleNames = [
 			contact.fullName,
 			contact.displayName,
@@ -180,8 +188,20 @@ export class SyncEngine {
 			.filter((n) => n && n.trim() && n.trim() !== ".")
 			.map((n) => normalize(n!));
 
+		// Exact match (case-insensitive)
 		for (const name of possibleNames) {
-			const file = files.get(name);
+			const file = filesLower.get(name);
+			if (file) return file;
+		}
+
+		// Partial match: me.sh name may have credentials appended
+		// e.g., "Lori McLeese, GPHR, SHRM-SCP" should match "Lori Mcleese"
+		// Try matching just "FirstName LastName" against existing filenames
+		const firstName = (contact.firstName || "").trim().toLowerCase();
+		const lastName = (contact.lastName || "").split(",")[0].trim().toLowerCase(); // strip credentials
+		if (firstName && lastName) {
+			const baseName = `${firstName} ${lastName}`;
+			const file = filesLower.get(baseName);
 			if (file) return file;
 		}
 
