@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-mesh",
+  "name": "Mesh",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Sync your contacts from Mesh (me.sh) into Obsidian. View relationship insights, upcoming birthdays, and open contacts directly in Mesh.",
+  "author": "Evan Zimmerman",
+  "authorUrl": "https://github.com/evanzi",
+  "isDesktopOnly": true
+}
