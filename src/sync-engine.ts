@@ -89,6 +89,7 @@ export class SyncEngine {
 						result.updated++;
 					} else {
 						const updated = await this.updateFile(existingFile, mapped, syncMeta);
+						await this.reorderFrontmatter(existingFile);
 						if (updated) {
 							result.updated++;
 						} else {
@@ -206,6 +207,85 @@ export class SyncEngine {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Canonical field order for frontmatter. Fields not in this list
+	 * are appended at the end in their original order.
+	 */
+	private static readonly FIELD_ORDER = [
+		// Primary contact info
+		"Prof. Contact",
+		"Last Update",
+		"Conn. type",
+		"Nickname",
+		"Title",
+		"Email (Private)",
+		"Phone",
+		"Profession / Position",
+		"Company",
+		"Team",
+		"Birthday",
+		"City",
+		"Country",
+		"URLs",
+		"LinkedIn",
+		"Twitter",
+		"GitHub",
+		"Instagram",
+		"Bio",
+		"Met?",
+		"Relationship Strength",
+		"Last Contacted",
+		// Data / source fields
+		"Source",
+		"Company (Me.sh)",
+		"Title (Me.sh)",
+		"City (Me.sh)",
+		"Country (Me.sh)",
+		"Birthday (Me.sh)",
+		"Bio (Me.sh)",
+		"Mesh Sources",
+		"Mesh Groups",
+		"Mesh ID",
+		"Mesh Last Synced",
+		"Mesh URL",
+		"Google Contact ID",
+		"ID",
+		"Photo",
+	];
+
+	/**
+	 * Reorder frontmatter fields to match canonical order.
+	 * Fields not in the order list are appended at the end.
+	 */
+	private async reorderFrontmatter(file: TFile): Promise<void> {
+		await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
+			const allKeys = Object.keys(fm);
+			const ordered: Record<string, unknown> = {};
+
+			// Add fields in canonical order
+			for (const key of SyncEngine.FIELD_ORDER) {
+				if (key in fm) {
+					ordered[key] = fm[key];
+				}
+			}
+
+			// Append any remaining fields not in the order list
+			for (const key of allKeys) {
+				if (!(key in ordered)) {
+					ordered[key] = fm[key];
+				}
+			}
+
+			// Clear and rewrite in order
+			for (const key of allKeys) {
+				delete fm[key];
+			}
+			for (const [key, value] of Object.entries(ordered)) {
+				fm[key] = value;
+			}
+		});
 	}
 
 	/**
@@ -346,36 +426,7 @@ export class SyncEngine {
 	 */
 	private async createFile(filePath: string, mapped: MappedContactData): Promise<void> {
 		const lines: string[] = ["---"];
-		const fieldOrder = [
-			"Prof. Contact",
-			"Conn. type",
-			"Nickname",
-			"Title",
-			"Email (Private)",
-			"Phone",
-			"Profession / Position",
-			"Met?",
-			"Last Update",
-			"Company",
-			"Birthday",
-			"City",
-			"Country",
-			"Source",
-			"Mesh ID",
-			"Mesh URL",
-			"Mesh Last Synced",
-			"LinkedIn",
-			"Twitter",
-			"GitHub",
-			"Instagram",
-			"Last Contacted",
-			"Relationship Strength",
-			"Mesh Tags",
-			"Mesh Groups",
-			"Mesh Sources",
-			"Bio",
-			"Photo",
-		];
+		const fieldOrder = SyncEngine.FIELD_ORDER;
 
 		const data: Record<string, unknown> = {
 			"Prof. Contact": false,
