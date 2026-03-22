@@ -12,6 +12,7 @@ export const ENRICHED_FIELDS = [
 	"City",
 	"Country",
 	"Birthday",
+	"Bio",
 ] as const;
 
 export type EnrichedField = typeof ENRICHED_FIELDS[number];
@@ -33,6 +34,7 @@ export interface MappedContactData {
 	"Last Contacted"?: string;
 	"Relationship Strength"?: string;
 	"Mesh Groups"?: string[];
+	"Mesh Sources"?: string[];
 	Photo?: string;
 
 	// Enriched data (potentially unreliable -- from me.sh enrichment engine)
@@ -41,6 +43,7 @@ export interface MappedContactData {
 	Birthday?: string;
 	City?: string;
 	Country?: string;
+	Bio?: string;
 }
 
 export class ContactMapper {
@@ -145,12 +148,20 @@ export class ContactMapper {
 			if (contactGroups.length > 0) data["Mesh Groups"] = contactGroups;
 		}
 
+		// Sources / integrations (direct -- which services this contact came from)
+		if (contact.integrations?.length) {
+			data["Mesh Sources"] = contact.integrations;
+		}
+
 		// Photo
 		if (settings.syncPhotos && contact.avatarURL) {
 			data.Photo = contact.avatarURL;
 		}
 
 		// ── Enriched data (potentially unreliable) ──
+
+		// Bio (from LinkedIn profile -- enriched)
+		if (contact.bio) data.Bio = contact.bio;
 
 		// Company and Title from organizations
 		const currentOrg = contact.organizations?.find((o) => !o.end)

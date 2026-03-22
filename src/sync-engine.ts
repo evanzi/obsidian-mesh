@@ -352,6 +352,8 @@ export class SyncEngine {
 			"Relationship Strength",
 			"Mesh Tags",
 			"Mesh Groups",
+			"Mesh Sources",
+			"Bio",
 			"Photo",
 		];
 
