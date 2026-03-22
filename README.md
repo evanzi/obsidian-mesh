@@ -1,8 +1,8 @@
 # Me.sh Sync for Obsidian
 
-Sync your contacts from [me.sh](https://me.sh) (Automattic's personal CRM, formerly [Clay](clay.earth) into Obsidian as People notes with structured YAML frontmatter, to benefit from Obsidian structured data and linking for meetings and other resources. 
+Sync your contacts from [Mesh](https://me.sh) (Automattic's personal CRM, formerly [Clay](clay.earth) into Obsidian as People notes with structured frontmatter, to benefit from Obsidian structured data and linking for meetings and other resources in your vault. 
 
-No API key needed -- the plugin reads auth tokens directly from the me.sh desktop app's local storage. Users will need to have me.sh installed and logged in.
+Users will need to have the Mesh desktop app for Mac installed and logged in before syncing.
 
 ## What It Does
 
