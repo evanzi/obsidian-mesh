@@ -76,7 +76,8 @@ export class ContactMapper {
 		if (phoneInfo) data.Phone = phoneInfo.value;
 
 		// Company and Title from organizations
-		const currentOrg = contact.organizations?.find((o) => o.current !== false)
+		// Current org = one with no end date (still active)
+		const currentOrg = contact.organizations?.find((o) => !o.end)
 			|| contact.organizations?.[0];
 		if (currentOrg) {
 			if (currentOrg.name) data.Company = currentOrg.name;
@@ -97,12 +98,11 @@ export class ContactMapper {
 			data.Birthday = `${y}-${m}-${d}`;
 		}
 
-		// Location -- primaryLocation or first location
-		if (contact.primaryLocation) {
-			// primaryLocation is a string like "City, State" or "City, Country"
-			const parts = contact.primaryLocation.split(",").map((s) => s.trim());
-			if (parts[0]) data.City = parts[0];
-			if (parts.length > 1) data.Country = parts[parts.length - 1];
+		// Location -- primaryLocation is an object with approximate, country, formatted
+		const loc = contact.primaryLocation || contact.locations?.[0];
+		if (loc) {
+			if (loc.approximate) data.City = loc.approximate;
+			if (loc.country) data.Country = loc.country;
 		}
 
 		// Social profiles -- top-level URL fields on the detail response
@@ -183,14 +183,21 @@ export class ContactMapper {
 	/**
 	 * Generate the display name for a file based on the detail endpoint data
 	 */
+	/**
+	 * Collapse multiple spaces into one
+	 */
+	private static normalize(s: string): string {
+		return s.replace(/\s+/g, " ").trim();
+	}
+
 	static getFileNameFromDetail(
 		contact: MeshContactDetail,
 		format: MeshSettings["fileNameFormat"]
 	): string {
 		const first = (contact.firstName || "").trim();
 		const last = (contact.lastName || "").trim();
-		const full = (contact.fullName || "").trim();
-		const display = (contact.displayName || "").trim();
+		const full = this.normalize(contact.fullName || "");
+		const display = this.normalize(contact.displayName || "");
 
 		const hasRealName = (first && first !== ".") || (last && last !== ".");
 
@@ -203,7 +210,7 @@ export class ContactMapper {
 				break;
 		}
 
-		if (full && full !== "." && full.trim() !== "") return full;
+		if (full && full !== ".") return full;
 		if (display) return display;
 
 		// Last resort: use email or ID
