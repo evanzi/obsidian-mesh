@@ -2,7 +2,7 @@ import { TFile, TFolder, normalizePath } from "obsidian";
 import type MeshPlugin from "./main";
 import { ContactMapper, MESH_MANAGED_FIELDS } from "./contact-mapper";
 import type { MappedContactData } from "./contact-mapper";
-import type { MeshContact, MeshGroup } from "./mesh-api";
+import type { MeshContactList, MeshGroup } from "./mesh-api";
 
 export interface SyncResult {
 	created: number;
@@ -67,7 +67,7 @@ export class SyncEngine {
 				// Store sync metadata for this contact
 				syncMeta.contacts[String(contact.id)] = { ...mapped } as Record<string, unknown>;
 			} catch (error) {
-				const msg = `Failed to sync ${contact.displayName}: ${error}`;
+				const msg = `Failed to sync ${contact.display_name}: ${error}`;
 				this.log(msg);
 				result.errors.push(msg);
 			}
@@ -86,7 +86,7 @@ export class SyncEngine {
 	 */
 	private findMatchingFile(
 		files: Map<string, TFile>,
-		contact: MeshContact,
+		contact: MeshContactList,
 		mapped: MappedContactData
 	): TFile | null {
 		// Match by Mesh ID first
@@ -105,10 +105,10 @@ export class SyncEngine {
 
 		// Match by file name (full name)
 		const possibleNames = [
-			contact.fullName,
-			contact.displayName,
-			`${contact.firstName} ${contact.lastName}`,
-		].filter(Boolean);
+			contact.full_name,
+			contact.display_name,
+			`${contact.first_name} ${contact.last_name}`,
+		].filter((n) => n && n.trim() && n.trim() !== ".");
 
 		for (const name of possibleNames) {
 			const file = files.get(name!);

@@ -1,4 +1,4 @@
-import type { MeshContact, MeshContactInfo, MeshGroup } from "./mesh-api";
+import type { MeshContactList, MeshContactInfo, MeshGroup } from "./mesh-api";
 import type { MeshSettings } from "./settings";
 
 /**
@@ -18,20 +18,6 @@ export const MESH_MANAGED_FIELDS = [
 	"Instagram",
 	"Photo",
 ] as const;
-
-/**
- * Fields that map between existing Obsidian schema and Mesh data
- */
-export const MAPPED_FIELDS = {
-	"Nickname": "nickname",
-	"Email (Private)": "primaryEmail",
-	"Phone": "primaryPhone",
-	"Company": "currentCompany",
-	"Title": "currentTitle",
-	"Birthday": "birthday",
-	"City": "city",
-	"Country": "country",
-} as const;
 
 export interface MappedContactData {
 	// Mesh-specific fields
@@ -63,27 +49,17 @@ export interface MappedContactData {
 
 export class ContactMapper {
 	/**
-	 * Extract a specific info type from the contact's information array
+	 * Extract the first info value matching a type from the contact's information array
 	 */
-	private static getInfo(contact: MeshContact, type: string, label?: string): string | undefined {
-		const items = contact.information?.filter(
-			(i) => i.type === type && (!label || i.label === label)
-		);
-		return items?.[0]?.value;
+	private static getInfo(contact: MeshContactList, type: string): string | undefined {
+		return contact.information?.find((i) => i.type === type)?.value;
 	}
 
 	/**
-	 * Extract all info values of a given type
-	 */
-	private static getAllInfo(contact: MeshContact, type: string): string[] {
-		return contact.information?.filter((i) => i.type === type).map((i) => i.value) || [];
-	}
-
-	/**
-	 * Map a Mesh contact to Obsidian frontmatter fields
+	 * Map a Mesh contact (list endpoint, snake_case) to Obsidian frontmatter fields
 	 */
 	static mapContact(
-		contact: MeshContact,
+		contact: MeshContactList,
 		groups: MeshGroup[],
 		settings: MeshSettings
 	): MappedContactData {
@@ -95,54 +71,50 @@ export class ContactMapper {
 			"Mesh Last Synced": now,
 		};
 
-		// Map standard fields
-		if (contact.nickname) data.Nickname = contact.nickname;
+		// Email -- type "email" in information[]
+		const email = this.getInfo(contact, "email");
+		if (email) data["Email (Private)"] = email;
 
-		const primaryEmail = this.getInfo(contact, "email");
-		if (primaryEmail) data["Email (Private)"] = primaryEmail;
+		// Phone -- type "phone" in information[]
+		const phone = this.getInfo(contact, "phone");
+		if (phone) data.Phone = phone;
 
-		const primaryPhone = this.getInfo(contact, "phone");
-		if (primaryPhone) data.Phone = primaryPhone;
-
-		// Current organization
-		const currentOrg = contact.organizations?.find((o) => o.current !== false) || contact.organizations?.[0];
-		if (currentOrg) {
-			if (currentOrg.name) data.Company = currentOrg.name;
-			if (currentOrg.title) data.Title = [currentOrg.title];
-		}
-
-		// Location
-		const city = this.getInfo(contact, "location", "city");
-		const country = this.getInfo(contact, "location", "country");
-		if (city) data.City = city;
-		if (country) data.Country = country;
-
-		// Birthday
-		const birthday = this.getInfo(contact, "date", "birthday");
-		if (birthday) data.Birthday = birthday;
-
-		// Social profiles
+		// Social profiles -- stored as information[] items with type = platform name
 		if (settings.syncSocialProfiles) {
-			const socials = contact.information?.filter((i) => i.type === "social" || i.type === "url") || [];
-			for (const s of socials) {
-				const val = s.value.toLowerCase();
-				if (val.includes("linkedin.com")) data.LinkedIn = s.value;
-				else if (val.includes("twitter.com") || val.includes("x.com")) data.Twitter = s.value;
-				else if (val.includes("github.com")) data.GitHub = s.value;
-				else if (val.includes("instagram.com")) data.Instagram = s.value;
+			for (const info of contact.information || []) {
+				switch (info.type) {
+					case "linkedin":
+						data.LinkedIn = info.value.startsWith("http")
+							? info.value
+							: `https://linkedin.com/in/${info.value}`;
+						break;
+					case "twitter":
+						data.Twitter = info.value.startsWith("http")
+							? info.value
+							: `https://x.com/${info.value}`;
+						break;
+					case "github":
+						data.GitHub = info.value.startsWith("http")
+							? info.value
+							: `https://github.com/${info.value}`;
+						break;
+					case "instagram":
+						data.Instagram = info.value.startsWith("http")
+							? info.value
+							: `https://instagram.com/${info.value}`;
+						break;
+				}
 			}
 		}
 
-		// Relationship data
-		if (settings.syncRelationshipData) {
-			if (contact.score !== undefined) {
-				if (contact.score >= 70) data["Relationship Strength"] = "Strong";
-				else if (contact.score >= 40) data["Relationship Strength"] = "Medium";
-				else data["Relationship Strength"] = "Weak";
-			}
+		// Relationship strength from score
+		if (settings.syncRelationshipData && contact.score > 0) {
+			if (contact.score >= 70) data["Relationship Strength"] = "Strong";
+			else if (contact.score >= 40) data["Relationship Strength"] = "Medium";
+			else data["Relationship Strength"] = "Weak";
 		}
 
-		// Tags & groups
+		// Groups
 		if (settings.syncTagsAndGroups) {
 			const contactGroups = groups
 				.filter((g) => g.contact_ids?.includes(contact.id))
@@ -159,17 +131,34 @@ export class ContactMapper {
 	}
 
 	/**
-	 * Generate the display name for a file based on settings
+	 * Generate the display name for a file based on settings.
+	 * Filters out empty names and placeholder dots.
 	 */
-	static getFileName(contact: MeshContact, format: MeshSettings["fileNameFormat"]): string {
+	static getFileName(contact: MeshContactList, format: MeshSettings["fileNameFormat"]): string {
+		const first = (contact.first_name || "").trim();
+		const last = (contact.last_name || "").trim();
+		const full = (contact.full_name || "").trim();
+		const display = (contact.display_name || "").trim();
+
+		// Filter out contacts that are just an email or have no real name
+		const hasRealName = (first && first !== ".") || (last && last !== ".");
+
 		switch (format) {
 			case "lastFirst":
-				return `${contact.lastName}, ${contact.firstName}`;
+				if (hasRealName && first && last) return `${last}, ${first}`;
+				break;
 			case "firstLast":
-				return `${contact.firstName} ${contact.lastName}`;
-			case "full":
-			default:
-				return contact.fullName || contact.displayName || `${contact.firstName} ${contact.lastName}`;
+				if (hasRealName && first && last) return `${first} ${last}`;
+				break;
 		}
+
+		// Default: use full_name, then display_name
+		if (full && full !== ".") return full;
+		if (display) return display;
+
+		// Last resort: use email or ID
+		const email = this.getInfo(contact, "email");
+		if (email) return email;
+		return `Mesh Contact ${contact.id}`;
 	}
 }
