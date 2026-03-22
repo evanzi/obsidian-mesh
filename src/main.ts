@@ -58,7 +58,10 @@ export default class MeshPlugin extends Plugin {
 		try {
 			new Notice("Mesh: Starting sync...");
 			const result = await this.syncEngine.sync();
-			new Notice(`Mesh: ${result.created} new, ${result.updated} updated`);
+			const parts = [`${result.created} new`, `${result.updated} updated`];
+			if (result.filtered > 0) parts.push(`${result.filtered} filtered`);
+			if (result.errors.length > 0) parts.push(`${result.errors.length} errors`);
+			new Notice(`Mesh: ${parts.join(", ")}`);
 		} catch (error) {
 			console.error("Mesh sync failed:", error);
 			if (error instanceof Error && error.message.includes("auth")) {
