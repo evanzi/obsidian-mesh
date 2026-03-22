@@ -149,8 +149,6 @@ export class MeshAPI {
 		const token = await this.plugin.auth.getAccessToken();
 		const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
 
-		this.log(`${method} ${url}`);
-
 		const response = await requestUrl({
 			url,
 			method,
@@ -161,7 +159,7 @@ export class MeshAPI {
 		});
 
 		if (response.status >= 400) {
-			throw new Error(`Mesh API error ${response.status}: ${response.text}`);
+			throw new Error(`Me.sh API error ${response.status}: ${response.text}`);
 		}
 
 		return response.json as T;
