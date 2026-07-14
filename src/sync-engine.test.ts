@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TFile } from "obsidian";
 import { SyncEngine } from "./sync-engine";
+import type { SyncConflict } from "./sync-engine";
 import type { MeshContactDetail } from "./mesh-api";
 
 /**
@@ -187,5 +188,40 @@ describe("SyncEngine.buildFileIndex / findMatchingFile", () => {
 		const contact = makeContactDetail({ id: 456, fullName: "." });
 
 		expect(engine.findMatchingFile(index, contact)).toBeNull();
+	});
+});
+
+/** Reach into SyncEngine's private updateFile for a focused collector test. */
+type UpdateFileInternals = {
+	updateFile: (
+		file: TFile,
+		mapped: Record<string, unknown>,
+		syncMeta: { lastSync: string; contacts: Record<string, Record<string, unknown>> },
+		collector: SyncConflict[]
+	) => Promise<boolean>;
+};
+
+describe("SyncEngine.updateFile conflict collection", () => {
+	it("collects a direct conflict and an enriched parallel conflict", async () => {
+		const frontmatter: Record<string, unknown> = { Phone: "555-MANUAL", Company: "Acme Corp" };
+		const plugin = {
+			settings: { conflictResolution: "ask", dryRun: false },
+			app: { fileManager: { processFrontMatter: async (_f: TFile, fn: (fm: Record<string, unknown>) => void) => fn(frontmatter) } },
+		} as unknown as ConstructorParameters<typeof SyncEngine>[0];
+		const engine = new SyncEngine(plugin) as unknown as UpdateFileInternals;
+		const file = makeFile("People/Jane Doe.md");
+		const mapped = {
+			"Mesh ID": 42, "Mesh URL": "https://me.sh/c/42", "Mesh Last Synced": "2026-07-14T00:00",
+			Phone: "555-9999", Company: "Acme Inc",
+		};
+		const syncMeta = { lastSync: "", contacts: { "42": { Phone: "555-1234" } } };
+		const collector: SyncConflict[] = [];
+
+		await engine.updateFile(file, mapped, syncMeta, collector);
+
+		expect(collector).toEqual([
+			{ file: file.path, field: "Phone", kept: "555-MANUAL", mesh: "555-9999", type: "direct", resolution: "ask" },
+			{ file: file.path, field: "Company", kept: "Acme Corp", mesh: "Acme Inc", type: "enriched", resolution: "obsidian" },
+		]);
 	});
 });

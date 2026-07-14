@@ -27,7 +27,7 @@ describe("computeFieldActions", () => {
 		expect(actions).toEqual([{ kind: "update", key: "Phone", value: "555-9999" }]);
 	});
 
-	it("takes no action on a manually edited field when resolution is obsidian", () => {
+	it("reports a conflict on a manually edited field when resolution is obsidian (user value kept)", () => {
 		const actions = computeFieldActions(
 			{ Phone: "555-MANUAL" },
 			{ Phone: "555-9999" },
@@ -35,7 +35,9 @@ describe("computeFieldActions", () => {
 			"obsidian",
 			isEnrichedField
 		);
-		expect(actions).toEqual([]);
+		expect(actions).toEqual([
+			{ kind: "conflict", key: "Phone", current: "555-MANUAL", incoming: "555-9999" },
+		]);
 	});
 
 	it("updates a manually edited field when resolution is mesh", () => {

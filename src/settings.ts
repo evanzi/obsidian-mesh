@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type MeshPlugin from "./main";
 import type { MeshSettings } from "./plugin-data";
+import { ConflictsModal } from "./conflicts-modal";
 
 export type { MeshSettings } from "./plugin-data";
 export { DEFAULT_SETTINGS } from "./plugin-data";
@@ -115,6 +116,15 @@ export class MeshSettingTab extends PluginSettingTab {
 						this.plugin.settings.conflictResolution = value as MeshSettings["conflictResolution"];
 						await this.plugin.saveSettings();
 					})
+			);
+
+		new Setting(containerEl)
+			.setName("Sync conflicts")
+			.setDesc("Review conflicts from the last sync")
+			.addButton((btn) =>
+				btn.setButtonText("View conflicts").onClick(() => {
+					new ConflictsModal(this.app, this.plugin).open();
+				})
 			);
 
 		// Data options

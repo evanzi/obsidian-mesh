@@ -88,6 +88,10 @@ These only fill empty fields. When existing data differs, a parallel field is cr
 
 For example, if your note has `Company: Automattic` and me.sh says Anthropic PBC, the plugin adds `Company (Me.sh): Anthropic PBC` alongside the original. Your data stays untouched.
 
+### Sync conflicts
+
+Conflicts from the most recent sync -- manual edits that differ from me.sh, and enriched fields written to a parallel "(Me.sh)" field -- are viewable via the **Sync conflicts** button in Settings or the **View last sync conflicts** command. View-only: nothing is resolved from the modal. The log lives in the plugin's `data.json` and is replaced on every sync (a clean sync with no conflicts clears the previous list).
+
 ### Fields me.sh sync never touches in Obsidian
 
 Any field not listed above is left completely alone -- Team, Conn. type, Prof. Contact, Profession/Position, ID, URLs, and anything else you've added.

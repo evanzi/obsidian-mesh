@@ -14,11 +14,26 @@ export interface SyncResult {
 	filtered: number;
 	unmatched: number; // contacts in me.sh with no existing file (when updateOnly)
 	errors: string[];
+	conflicts: number;
 }
 
 interface SyncMetadata {
 	lastSync: string;
 	contacts: Record<string, Record<string, unknown>>; // meshId -> last-synced field values
+}
+
+export interface SyncConflict {
+	file: string; // vault path of the note
+	field: string;
+	kept: unknown; // the value that stayed in the note
+	mesh: unknown; // the differing me.sh value
+	type: "direct" | "enriched";
+	resolution: "obsidian" | "ask"; // direct only; enriched entries use "obsidian"
+}
+
+interface ConflictLog {
+	timestamp: string; // ISO, when the sync ran
+	conflicts: SyncConflict[];
 }
 
 // Small delay between detail API calls to avoid rate limiting
@@ -40,8 +55,9 @@ export class SyncEngine {
 	async sync(): Promise<SyncResult> {
 		const result: SyncResult = {
 			created: 0, updated: 0, skipped: 0,
-			filtered: 0, unmatched: 0, errors: [],
+			filtered: 0, unmatched: 0, errors: [], conflicts: 0,
 		};
+		const conflicts: SyncConflict[] = [];
 		const isDryRun = this.plugin.settings.dryRun;
 		const isUpdateOnly = this.plugin.settings.updateOnly;
 
@@ -116,7 +132,7 @@ export class SyncEngine {
 							result.skipped++;
 						}
 					} else {
-						const updated = await this.updateFile(existingFile, mapped, syncMeta);
+						const updated = await this.updateFile(existingFile, mapped, syncMeta, conflicts);
 						if (updated) {
 							await this.reorderFrontmatter(existingFile);
 							result.updated++;
@@ -157,7 +173,10 @@ export class SyncEngine {
 		if (!isDryRun) {
 			syncMeta.lastSync = new Date().toISOString();
 			await this.saveSyncMetadata(syncMeta);
+			await this.saveConflictLog({ timestamp: new Date().toISOString(), conflicts });
 		}
+
+		result.conflicts = conflicts.length;
 
 		this.log(`Sync complete: ${result.created} created, ${result.updated} updated, ${result.skipped} unchanged, ${result.filtered} filtered, ${result.unmatched} unmatched, ${result.errors.length} errors`);
 		return result;
@@ -266,7 +285,8 @@ export class SyncEngine {
 	private async updateFile(
 		file: TFile,
 		mapped: MappedContactData,
-		syncMeta: SyncMetadata
+		syncMeta: SyncMetadata,
+		collector: SyncConflict[]
 	): Promise<boolean> {
 		let updated = false;
 
@@ -294,10 +314,28 @@ export class SyncEngine {
 						fm[action.meshKey] = action.value;
 						updated = true;
 						this.log(`[enriched conflict] ${file.basename} / ${action.key}: keeping "${currentValue}", adding "${action.meshKey}": "${action.value}"`);
+						collector.push({
+							file: file.path,
+							field: action.key,
+							kept: currentValue,
+							mesh: action.value,
+							type: "enriched",
+							resolution: "obsidian",
+						});
 						break;
 					}
 					case "conflict":
-						this.log(`[conflict] ${file.basename} / ${action.key}: obsidian="${action.current}" vs me.sh="${action.incoming}"`);
+						if (this.plugin.settings.conflictResolution === "ask") {
+							this.log(`[conflict] ${file.basename} / ${action.key}: obsidian="${action.current}" vs me.sh="${action.incoming}"`);
+						}
+						collector.push({
+							file: file.path,
+							field: action.key,
+							kept: action.current,
+							mesh: action.incoming,
+							type: "direct",
+							resolution: this.plugin.settings.conflictResolution as "obsidian" | "ask",
+						});
 						break;
 				}
 			}
@@ -351,24 +389,36 @@ export class SyncEngine {
 			ContactMapper.isEnrichedField
 		);
 
-		const changes = actions.map((action) => {
-			switch (action.kind) {
-				case "fill":
-					return `  + ${action.key}: ${JSON.stringify(action.value)}`;
-				case "update":
-					return `  ~ ${action.key}: ${JSON.stringify(fm[action.key])} → ${JSON.stringify(action.value)}`;
-				case "parallel":
-					return `  ≠ ${action.key}: keeping current | would add "${action.key} (Me.sh)": ${JSON.stringify(action.value)}`;
-				case "conflict":
-					return `  ! ${action.key}: conflict (obsidian wins — no change)`;
-			}
-		});
+		// Conflict actions never count as changes in the real path (updateFile
+		// never sets `updated` for them), so filter them out here too --
+		// otherwise a file whose only actions are conflicts would be counted
+		// as "updated" in dry run while the real sync would skip it.
+		const changeActions = actions.filter((action) => action.kind !== "conflict");
+
+		const changes = actions
+			.map((action) => {
+				switch (action.kind) {
+					case "fill":
+						return `  + ${action.key}: ${JSON.stringify(action.value)}`;
+					case "update":
+						return `  ~ ${action.key}: ${JSON.stringify(fm[action.key])} → ${JSON.stringify(action.value)}`;
+					case "parallel":
+						return `  ≠ ${action.key}: keeping current | would add "${action.key} (Me.sh)": ${JSON.stringify(action.value)}`;
+					case "conflict":
+						// Ask-mode-only, mirroring the real path's silent
+						// handling of conflicts in obsidian mode.
+						return this.plugin.settings.conflictResolution === "ask"
+							? `  ! ${action.key}: conflict (ask mode — no change)`
+							: undefined;
+				}
+			})
+			.filter((line): line is string => line !== undefined);
 
 		if (changes.length > 0) {
 			this.log(`[dry-run] ${file.basename}:\n${changes.join("\n")}`);
 		}
 
-		return actions;
+		return changeActions;
 	}
 
 	/**
@@ -418,6 +468,17 @@ export class SyncEngine {
 		const data = (await this.plugin.loadData()) || {};
 		data.syncMeta = meta;
 		await this.plugin.saveData(data);
+	}
+
+	private async saveConflictLog(log: ConflictLog): Promise<void> {
+		const data = (await this.plugin.loadData()) || {};
+		data.lastConflicts = log;
+		await this.plugin.saveData(data);
+	}
+
+	async loadConflictLog(): Promise<ConflictLog | null> {
+		const data = await this.plugin.loadData();
+		return data?.lastConflicts || null;
 	}
 
 	private delay(ms: number): Promise<void> {

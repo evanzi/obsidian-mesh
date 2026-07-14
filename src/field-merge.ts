@@ -9,7 +9,7 @@ export type FieldAction =
 	| { kind: "fill"; key: string; value: unknown } // empty -> fill
 	| { kind: "update"; key: string; value: unknown } // unchanged since last sync, or mesh-wins
 	| { kind: "parallel"; key: string; meshKey: string; value: unknown } // enriched conflict
-	| { kind: "conflict"; key: string; current: unknown; incoming: unknown }; // ask-mode log
+	| { kind: "conflict"; key: string; current: unknown; incoming: unknown }; // user value kept, mesh differs (obsidian or ask mode)
 
 const METADATA_KEYS = new Set(["Mesh Last Synced", "Mesh URL", "Mesh ID"]);
 
@@ -82,10 +82,10 @@ export function computeFieldActions(
 			// Manually edited -> apply conflict resolution
 			if (conflictResolution === "mesh") {
 				actions.push({ kind: "update", key, value: newValue });
-			} else if (conflictResolution === "ask") {
+			} else {
+				// "obsidian" and "ask": keep the user's value, surface the conflict
 				actions.push({ kind: "conflict", key, current: currentValue, incoming: newValue });
 			}
-			// conflictResolution === "obsidian" -> no action
 		}
 	}
 
