@@ -1,8 +1,9 @@
-import { TFile, TFolder, normalizePath, Notice } from "obsidian";
+import { TFile, TFolder, normalizePath, Notice, stringifyYaml } from "obsidian";
 import type MeshPlugin from "./main";
 import { ContactMapper } from "./contact-mapper";
 import type { MappedContactData } from "./contact-mapper";
 import type { MeshContactList, MeshContactDetail, MeshGroup } from "./mesh-api";
+import { orderFrontmatter, FIELD_ORDER } from "./frontmatter";
 
 export interface SyncResult {
 	created: number;
@@ -210,74 +211,13 @@ export class SyncEngine {
 	}
 
 	/**
-	 * Canonical field order for frontmatter. Fields not in this list
-	 * are appended at the end in their original order.
-	 */
-	private static readonly FIELD_ORDER = [
-		// Primary contact info
-		"Prof. Contact",
-		"Last Update",
-		"Conn. type",
-		"Nickname",
-		"Title",
-		"Email (Private)",
-		"Phone",
-		"Profession / Position",
-		"Company",
-		"Team",
-		"Birthday",
-		"City",
-		"Country",
-		"URLs",
-		"LinkedIn",
-		"Twitter",
-		"GitHub",
-		"Instagram",
-		"Facebook",
-		"Bio",
-		"Met?",
-		"Relationship Strength",
-		"Last Contacted",
-		// Data / source fields
-		"Source",
-		"Company (Me.sh)",
-		"Title (Me.sh)",
-		"City (Me.sh)",
-		"Country (Me.sh)",
-		"Birthday (Me.sh)",
-		"Bio (Me.sh)",
-		"Mesh Sources",
-		"Mesh Groups",
-		"Mesh ID",
-		"Mesh Last Synced",
-		"Mesh URL",
-		"Google Contact ID",
-		"ID",
-		"Photo",
-	];
-
-	/**
 	 * Reorder frontmatter fields to match canonical order.
 	 * Fields not in the order list are appended at the end.
 	 */
 	private async reorderFrontmatter(file: TFile): Promise<void> {
 		await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
 			const allKeys = Object.keys(fm);
-			const ordered: Record<string, unknown> = {};
-
-			// Add fields in canonical order
-			for (const key of SyncEngine.FIELD_ORDER) {
-				if (key in fm) {
-					ordered[key] = fm[key];
-				}
-			}
-
-			// Append any remaining fields not in the order list
-			for (const key of allKeys) {
-				if (!(key in ordered)) {
-					ordered[key] = fm[key];
-				}
-			}
+			const ordered = orderFrontmatter(fm, FIELD_ORDER);
 
 			// Clear and rewrite in order
 			for (const key of allKeys) {
@@ -434,9 +374,6 @@ export class SyncEngine {
 	 * Create a new contact file
 	 */
 	private async createFile(filePath: string, mapped: MappedContactData): Promise<void> {
-		const lines: string[] = ["---"];
-		const fieldOrder = SyncEngine.FIELD_ORDER;
-
 		const data: Record<string, unknown> = {
 			"Prof. Contact": false,
 			"Met?": "Empty",
@@ -444,29 +381,9 @@ export class SyncEngine {
 			"Last Update": new Date().toISOString().slice(0, 16),
 			...mapped,
 		};
-
-		for (const key of fieldOrder) {
-			const value = data[key];
-			if (value === undefined) continue;
-
-			if (Array.isArray(value)) {
-				lines.push(`${key}:`);
-				for (const item of value) {
-					lines.push(`  - ${item}`);
-				}
-			} else if (typeof value === "string" && this.needsQuoting(value)) {
-				// Escape internal double quotes and wrap in quotes
-				const escaped = value.replace(/"/g, '\\"');
-				lines.push(`${key}: "${escaped}"`);
-			} else {
-				lines.push(`${key}: ${value}`);
-			}
-		}
-
-		lines.push("---");
-		lines.push("");
-
-		await this.plugin.app.vault.create(filePath, lines.join("\n"));
+		const ordered = orderFrontmatter(data, FIELD_ORDER);
+		const content = `---\n${stringifyYaml(ordered)}---\n`;
+		await this.plugin.app.vault.create(filePath, content);
 	}
 
 	private async ensureFolder(path: string): Promise<void> {
@@ -500,20 +417,6 @@ export class SyncEngine {
 		const data = (await this.plugin.loadData()) || {};
 		data.syncMeta = meta;
 		await this.plugin.saveData(data);
-	}
-
-	/**
-	 * Check if a YAML value needs to be wrapped in quotes.
-	 * URLs, strings with special YAML characters, or long strings need quoting.
-	 */
-	private needsQuoting(value: string): boolean {
-		if (value.startsWith("http")) return true;
-		if (value.length > 80) return true;
-		if (/[:{}\[\]&*?|>!%@`#,]/.test(value)) return true;
-		if (/^['"]/.test(value)) return true;
-		// em dash and other unicode punctuation
-		if (/[\u2014\u2013\u2018\u2019\u201C\u201D]/.test(value)) return true;
-		return false;
 	}
 
 	private delay(ms: number): Promise<void> {
