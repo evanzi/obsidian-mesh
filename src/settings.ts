@@ -1,33 +1,9 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type MeshPlugin from "./main";
+import type { MeshSettings } from "./plugin-data";
 
-export interface MeshSettings {
-	peopleFolder: string;
-	autoSync: boolean;
-	syncInterval: number; // minutes
-	fileNameFormat: "full" | "lastFirst" | "firstLast";
-	conflictResolution: "obsidian" | "mesh" | "ask";
-	updateOnly: boolean;
-	dryRun: boolean;
-	syncSocialProfiles: boolean;
-	syncRelationshipData: boolean;
-	syncTagsAndGroups: boolean;
-	syncPhotos: boolean;
-}
-
-export const DEFAULT_SETTINGS: MeshSettings = {
-	peopleFolder: "People",
-	autoSync: false,
-	syncInterval: 60,
-	fileNameFormat: "full",
-	conflictResolution: "obsidian",
-	updateOnly: false,
-	dryRun: false,
-	syncSocialProfiles: true,
-	syncRelationshipData: true,
-	syncTagsAndGroups: true,
-	syncPhotos: false,
-};
+export type { MeshSettings } from "./plugin-data";
+export { DEFAULT_SETTINGS } from "./plugin-data";
 
 export class MeshSettingTab extends PluginSettingTab {
 	plugin: MeshPlugin;
