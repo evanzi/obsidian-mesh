@@ -152,6 +152,46 @@ describe("ContactMapper.getFileNameFromDetail", () => {
 		});
 		expect(ContactMapper.getFileNameFromDetail(contact, "full")).toBe("Jane D.");
 	});
+
+	it("sanitizes a fullName containing slashes", () => {
+		const contact = makeContactDetail({ fullName: "///" });
+		expect(ContactMapper.getFileNameFromDetail(contact, "full")).toBe(
+			`Mesh Contact ${contact.id}`
+		);
+	});
+
+	it("sanitizes an email fallback containing a slash", () => {
+		const contact = makeContactDetail({
+			information: [{ type: "email", value: "a/b@evil.com" }],
+		});
+		expect(ContactMapper.getFileNameFromDetail(contact, "full")).toBe("a b@evil.com");
+	});
+});
+
+describe("ContactMapper.sanitizeFileName", () => {
+	it("replaces a slash with a space", () => {
+		expect(ContactMapper.sanitizeFileName("Bob / ACME")).toBe("Bob ACME");
+	});
+
+	it("strips leading dots and backslashes from a Windows-style traversal", () => {
+		expect(ContactMapper.sanitizeFileName("..\\..\\evil")).toBe("evil");
+	});
+
+	it("strips leading dots and slashes from a POSIX-style traversal", () => {
+		expect(ContactMapper.sanitizeFileName("../../evil")).toBe("evil");
+	});
+
+	it("replaces illegal and link-breaking characters with spaces", () => {
+		expect(ContactMapper.sanitizeFileName("A:B|C#D[E]")).toBe("A B C D E");
+	});
+
+	it("reduces an all-dots name to an empty string", () => {
+		expect(ContactMapper.sanitizeFileName("...")).toBe("");
+	});
+
+	it("leaves a normal name with a legal comma unchanged", () => {
+		expect(ContactMapper.sanitizeFileName("Lori McLeese, GPHR")).toBe("Lori McLeese, GPHR");
+	});
 });
 
 describe("ContactMapper.mapContactDetail", () => {

@@ -215,6 +215,24 @@ export class ContactMapper {
 	}
 
 	/**
+	 * Make a contact-derived string safe to use as an Obsidian file name.
+	 * Strips characters illegal in Obsidian/OS file names and link syntax,
+	 * collapses whitespace, and drops whitespace-delimited segments that are
+	 * made up entirely of dots (e.g. "..", "...") -- these are the only ones
+	 * that enable path traversal or hidden-file names once path separators
+	 * have been neutralized above. Dots embedded in real content (e.g. "D."
+	 * or "example.com") are left alone.
+	 */
+	static sanitizeFileName(name: string): string {
+		return name
+			.replace(/[\\/:*?"<>|#^[\]]/g, " ") // illegal + link-breaking chars
+			.split(/\s+/)
+			.filter((segment) => segment !== "" && !/^\.+$/.test(segment))
+			.join(" ")
+			.trim();
+	}
+
+	/**
 	 * Generate the display name for a file
 	 */
 	static getFileNameFromDetail(
@@ -228,21 +246,29 @@ export class ContactMapper {
 
 		const hasRealName = (first && first !== ".") || (last && last !== ".");
 
+		let candidate: string | undefined;
 		switch (format) {
 			case "lastFirst":
-				if (hasRealName && first && last) return `${last}, ${first}`;
+				if (hasRealName && first && last) candidate = `${last}, ${first}`;
 				break;
 			case "firstLast":
-				if (hasRealName && first && last) return `${first} ${last}`;
+				if (hasRealName && first && last) candidate = `${first} ${last}`;
 				break;
 		}
 
-		if (full && full !== ".") return full;
-		if (display) return display;
+		if (candidate === undefined) {
+			if (full && full !== ".") {
+				candidate = full;
+			} else if (display) {
+				candidate = display;
+			} else {
+				const email = contact.information?.find((i) => i.type === "email")?.value;
+				candidate = email || `Mesh Contact ${contact.id}`;
+			}
+		}
 
-		const email = contact.information?.find((i) => i.type === "email")?.value;
-		if (email) return email;
-		return `Mesh Contact ${contact.id}`;
+		const safe = this.sanitizeFileName(candidate);
+		return safe || `Mesh Contact ${contact.id}`;
 	}
 
 	/**
