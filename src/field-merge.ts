@@ -7,8 +7,14 @@
 
 export type FieldAction =
 	| { kind: "fill"; key: string; value: unknown } // empty -> fill
-	| { kind: "update"; key: string; value: unknown } // unchanged since last sync, or mesh-wins
+	| { kind: "update"; key: string; value: unknown } // unchanged since last sync, or mesh-wins, or a managed field mirroring me.sh
 	| { kind: "parallel"; key: string; meshKey: string; value: unknown } // enriched conflict
+	// Enriched field whose parallel "(Me.sh)" value already equals the incoming
+	// value: the disagreement between `key` and `meshKey` persists but nothing
+	// needs to be written. Kept as an action (rather than silently doing
+	// nothing) so the conflict log can record it every sync instead of only
+	// the one sync where the "(Me.sh)" field was first written.
+	| { kind: "parallel-existing"; key: string; meshKey: string; value: unknown }
 	| { kind: "conflict"; key: string; current: unknown; incoming: unknown }; // user value kept, mesh differs (obsidian or ask mode)
 
 const METADATA_KEYS = new Set(["Mesh Last Synced", "Mesh URL", "Mesh ID"]);
@@ -23,13 +29,18 @@ const METADATA_KEYS = new Set(["Mesh Last Synced", "Mesh URL", "Mesh ID"]);
  * "only write the (Me.sh) parallel field when its value actually changed"
  * rule. Does not include the `Source: Google Contacts` migration or the
  * metadata-field writes -- those stay in `updateFile`.
+ *
+ * Managed fields (`isManagedField`) are checked first: they always mirror
+ * the incoming me.sh value and never produce `conflict` or `parallel`
+ * actions -- fill when empty, update when different, otherwise nothing.
  */
 export function computeFieldActions(
 	current: Record<string, unknown>,
 	mapped: Record<string, unknown>,
 	lastSynced: Record<string, unknown>,
 	conflictResolution: "obsidian" | "mesh" | "ask",
-	isEnrichedField: (key: string) => boolean
+	isEnrichedField: (key: string) => boolean,
+	isManagedField: (key: string) => boolean
 ): FieldAction[] {
 	const actions: FieldAction[] = [];
 
@@ -38,6 +49,17 @@ export function computeFieldActions(
 		if (METADATA_KEYS.has(key)) continue;
 
 		const currentValue = current[key];
+
+		if (isManagedField(key)) {
+			// ── Managed field handling: always mirrors me.sh ──
+			if (currentValue === undefined || currentValue === null || currentValue === "") {
+				actions.push({ kind: "fill", key, value: newValue });
+			} else if (JSON.stringify(currentValue) !== JSON.stringify(newValue)) {
+				actions.push({ kind: "update", key, value: newValue });
+			}
+			continue;
+		}
+
 		const isEnriched = isEnrichedField(key);
 
 		if (isEnriched) {
@@ -57,9 +79,13 @@ export function computeFieldActions(
 			const meshKey = `${key} (Me.sh)`;
 			const existingMeshValue = current[meshKey];
 
-			// Only update the (Me.sh) field if the value changed
+			// Only update the (Me.sh) field if the value changed. Otherwise the
+			// disagreement between `key` and `meshKey` already persists in the
+			// note -- report it so the conflict log keeps recording it.
 			if (JSON.stringify(existingMeshValue) !== JSON.stringify(newValue)) {
 				actions.push({ kind: "parallel", key, meshKey, value: newValue });
+			} else {
+				actions.push({ kind: "parallel-existing", key, meshKey, value: newValue });
 			}
 		} else {
 			// ── Direct field handling ──

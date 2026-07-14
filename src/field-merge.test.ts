@@ -3,6 +3,8 @@ import { computeFieldActions } from "./field-merge";
 
 const isEnrichedField = (key: string) =>
 	["Company", "Title", "City", "Country", "Birthday", "Bio"].includes(key);
+const isManagedField = (key: string) => key === "Me.sh Notes";
+const noManagedFields = () => false;
 
 describe("computeFieldActions", () => {
 	it("fills an empty direct field", () => {
@@ -11,7 +13,8 @@ describe("computeFieldActions", () => {
 			{ Phone: "555-1234" },
 			{},
 			"obsidian",
-			isEnrichedField
+			isEnrichedField,
+			noManagedFields
 		);
 		expect(actions).toEqual([{ kind: "fill", key: "Phone", value: "555-1234" }]);
 	});
@@ -22,7 +25,8 @@ describe("computeFieldActions", () => {
 			{ Phone: "555-9999" },
 			{ Phone: "555-1234" },
 			"obsidian",
-			isEnrichedField
+			isEnrichedField,
+			noManagedFields
 		);
 		expect(actions).toEqual([{ kind: "update", key: "Phone", value: "555-9999" }]);
 	});
@@ -33,7 +37,8 @@ describe("computeFieldActions", () => {
 			{ Phone: "555-9999" },
 			{ Phone: "555-1234" },
 			"obsidian",
-			isEnrichedField
+			isEnrichedField,
+			noManagedFields
 		);
 		expect(actions).toEqual([
 			{ kind: "conflict", key: "Phone", current: "555-MANUAL", incoming: "555-9999" },
@@ -46,7 +51,8 @@ describe("computeFieldActions", () => {
 			{ Phone: "555-9999" },
 			{ Phone: "555-1234" },
 			"mesh",
-			isEnrichedField
+			isEnrichedField,
+			noManagedFields
 		);
 		expect(actions).toEqual([{ kind: "update", key: "Phone", value: "555-9999" }]);
 	});
@@ -57,7 +63,8 @@ describe("computeFieldActions", () => {
 			{ Phone: "555-9999" },
 			{ Phone: "555-1234" },
 			"ask",
-			isEnrichedField
+			isEnrichedField,
+			noManagedFields
 		);
 		expect(actions).toEqual([
 			{ kind: "conflict", key: "Phone", current: "555-MANUAL", incoming: "555-9999" },
@@ -70,7 +77,8 @@ describe("computeFieldActions", () => {
 			{ Company: "Acme" },
 			{},
 			"obsidian",
-			isEnrichedField
+			isEnrichedField,
+			noManagedFields
 		);
 		expect(actions).toEqual([{ kind: "fill", key: "Company", value: "Acme" }]);
 	});
@@ -81,7 +89,8 @@ describe("computeFieldActions", () => {
 			{ Company: "Acme" },
 			{},
 			"obsidian",
-			isEnrichedField
+			isEnrichedField,
+			noManagedFields
 		);
 		expect(actions).toEqual([]);
 	});
@@ -92,22 +101,26 @@ describe("computeFieldActions", () => {
 			{ Company: "Acme Inc" },
 			{},
 			"obsidian",
-			isEnrichedField
+			isEnrichedField,
+			noManagedFields
 		);
 		expect(actions).toEqual([
 			{ kind: "parallel", key: "Company", meshKey: "Company (Me.sh)", value: "Acme Inc" },
 		]);
 	});
 
-	it("takes no action when the parallel (Me.sh) field already equals the incoming value", () => {
+	it("emits a parallel-existing action when the parallel (Me.sh) field already equals the incoming value", () => {
 		const actions = computeFieldActions(
 			{ Company: "Acme Corp", "Company (Me.sh)": "Acme Inc" },
 			{ Company: "Acme Inc" },
 			{},
 			"obsidian",
-			isEnrichedField
+			isEnrichedField,
+			noManagedFields
 		);
-		expect(actions).toEqual([]);
+		expect(actions).toEqual([
+			{ kind: "parallel-existing", key: "Company", meshKey: "Company (Me.sh)", value: "Acme Inc" },
+		]);
 	});
 
 	it("never produces actions for metadata keys", () => {
@@ -116,7 +129,8 @@ describe("computeFieldActions", () => {
 			{ "Mesh ID": 42, "Mesh URL": "https://me.sh/c/42", "Mesh Last Synced": "2026-07-14T00:00" },
 			{},
 			"obsidian",
-			isEnrichedField
+			isEnrichedField,
+			noManagedFields
 		);
 		expect(actions).toEqual([]);
 	});
@@ -127,8 +141,54 @@ describe("computeFieldActions", () => {
 			{ Phone: undefined },
 			{},
 			"obsidian",
-			isEnrichedField
+			isEnrichedField,
+			noManagedFields
 		);
 		expect(actions).toEqual([]);
+	});
+
+	describe("managed fields (e.g. Me.sh Notes)", () => {
+		it("fills an empty managed field", () => {
+			const actions = computeFieldActions(
+				{ "Me.sh Notes": "" },
+				{ "Me.sh Notes": ["2026-01-01: hello"] },
+				{},
+				"obsidian",
+				isEnrichedField,
+				isManagedField
+			);
+			expect(actions).toEqual([
+				{ kind: "fill", key: "Me.sh Notes", value: ["2026-01-01: hello"] },
+			]);
+		});
+
+		it("takes no action when a managed field already matches", () => {
+			const actions = computeFieldActions(
+				{ "Me.sh Notes": ["2026-01-01: hello"] },
+				{ "Me.sh Notes": ["2026-01-01: hello"] },
+				{},
+				"obsidian",
+				isEnrichedField,
+				isManagedField
+			);
+			expect(actions).toEqual([]);
+		});
+
+		it.each(["obsidian", "mesh", "ask"] as const)(
+			"overwrites a user-edited managed field with the incoming value regardless of resolution mode (%s)",
+			(conflictResolution) => {
+				const actions = computeFieldActions(
+					{ "Me.sh Notes": ["user edited this"] },
+					{ "Me.sh Notes": ["2026-01-01: hello"] },
+					{},
+					conflictResolution,
+					isEnrichedField,
+					isManagedField
+				);
+				expect(actions).toEqual([
+					{ kind: "update", key: "Me.sh Notes", value: ["2026-01-01: hello"] },
+				]);
+			}
+		);
 	});
 });

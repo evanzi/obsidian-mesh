@@ -224,4 +224,31 @@ describe("SyncEngine.updateFile conflict collection", () => {
 			{ file: file.path, field: "Company", kept: "Acme Corp", mesh: "Acme Inc", type: "enriched", resolution: "obsidian" },
 		]);
 	});
+
+	it("collects a persisting enriched disagreement (parallel-existing) without setting updated", async () => {
+		const frontmatter: Record<string, unknown> = {
+			"Mesh ID": 42,
+			Company: "Acme Corp",
+			"Company (Me.sh)": "Acme Inc",
+		};
+		const plugin = {
+			settings: { conflictResolution: "obsidian", dryRun: false },
+			app: { fileManager: { processFrontMatter: async (_f: TFile, fn: (fm: Record<string, unknown>) => void) => fn(frontmatter) } },
+		} as unknown as ConstructorParameters<typeof SyncEngine>[0];
+		const engine = new SyncEngine(plugin) as unknown as UpdateFileInternals;
+		const file = makeFile("People/Jane Doe.md");
+		const mapped = {
+			"Mesh ID": 42, "Mesh URL": "https://me.sh/c/42", "Mesh Last Synced": "2026-07-14T00:00",
+			Company: "Acme Inc",
+		};
+		const syncMeta = { lastSync: "", contacts: {} };
+		const collector: SyncConflict[] = [];
+
+		const updated = await engine.updateFile(file, mapped, syncMeta, collector);
+
+		expect(updated).toBe(false);
+		expect(collector).toEqual([
+			{ file: file.path, field: "Company", kept: "Acme Corp", mesh: "Acme Inc", type: "enriched", resolution: "obsidian" },
+		]);
+	});
 });

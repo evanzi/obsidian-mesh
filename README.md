@@ -1,8 +1,8 @@
 # Me.sh Sync for Obsidian
 
-Sync your contacts from [Mesh](https://me.sh) (Automattic's personal CRM, formerly [Clay](clay.earth) into Obsidian as People notes with structured frontmatter, to benefit from Obsidian structured data and linking for meetings and other resources in your vault. 
+Sync your contacts from [Mesh](https://me.sh) (Automattic's personal CRM, formerly [Clay](https://clay.earth)) into Obsidian as People notes with structured frontmatter, to benefit from Obsidian structured data and linking for meetings and other resources in your vault. 
 
-Users will need to have the Mesh desktop app for Mac installed and logged in before syncing.
+Users will need to have the Mesh desktop app installed and logged in before syncing.
 
 ## What It Does
 
@@ -57,6 +57,8 @@ npm run build
 | Setting | Description |
 |---------|-------------|
 | **People folder** | Path to the folder where contact files are stored (e.g., `People` or `Work/People`) |
+| **Auto sync** | Automatically sync contacts in the background (off by default) |
+| **Sync interval** | How often auto sync runs, from every 30 minutes to every 24 hours (shown when auto sync is enabled) |
 | **Update only** | Only update existing files, don't create new contacts. Recommended for initial testing. |
 | **Dry run** | Log what would change to the console (`Cmd+Option+I`) without writing any files |
 | **Conflict resolution** | For direct fields when me.sh data conflicts with manual edits: *Obsidian wins* (default), *Me.sh wins*, or *Ask* (log for review) |
@@ -89,7 +91,10 @@ These follow your conflict resolution setting:
 - LinkedIn, Twitter, GitHub, Instagram, Facebook
 - Last Contacted, Relationship Strength
 - Groups, Sources
-- Me.sh Notes
+
+### Me.sh Notes (plugin-managed)
+
+The "Me.sh Notes" field is fully plugin-managed: it's replaced with the latest notes from Mesh on every sync, regardless of your conflict resolution setting. Edits made directly to this field in Obsidian will be overwritten on the next sync -- edit notes in Mesh, not in this field.
 
 ### Enriched fields (from me.sh's enrichment engine, can be inaccurate)
 

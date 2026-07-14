@@ -17,6 +17,16 @@ export const ENRICHED_FIELDS = [
 
 export type EnrichedField = typeof ENRICHED_FIELDS[number];
 
+/**
+ * Fields that are fully plugin-managed: they always mirror me.sh, and any
+ * user edit made directly in Obsidian is overwritten on the next sync.
+ * Unlike enriched fields, these never conflict and never split into a
+ * parallel "(Me.sh)" field -- there is only one source of truth.
+ */
+export const MANAGED_FIELDS = ["Me.sh Notes"] as const;
+
+export type ManagedField = typeof MANAGED_FIELDS[number];
+
 export interface MappedContactData {
 	// Mesh-specific fields (always written)
 	"Mesh ID": number;
@@ -54,6 +64,14 @@ export class ContactMapper {
 	 */
 	static isEnrichedField(key: string): boolean {
 		return (ENRICHED_FIELDS as readonly string[]).includes(key);
+	}
+
+	/**
+	 * Check if a field is plugin-managed (always mirrors me.sh; user edits
+	 * are overwritten on the next sync).
+	 */
+	static isManagedField(key: string): boolean {
+		return (MANAGED_FIELDS as readonly string[]).includes(key);
 	}
 
 	/**

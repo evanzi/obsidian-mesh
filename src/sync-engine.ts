@@ -171,9 +171,10 @@ export class SyncEngine {
 
 		// Save sync metadata (skip in dry run)
 		if (!isDryRun) {
-			syncMeta.lastSync = new Date().toISOString();
+			const syncTimestamp = new Date().toISOString();
+			syncMeta.lastSync = syncTimestamp;
 			await this.saveSyncMetadata(syncMeta);
-			await this.saveConflictLog({ timestamp: new Date().toISOString(), conflicts });
+			await this.saveConflictLog({ timestamp: syncTimestamp, conflicts });
 		}
 
 		result.conflicts = conflicts.length;
@@ -299,7 +300,8 @@ export class SyncEngine {
 				{ ...mapped } as Record<string, unknown>,
 				lastSynced,
 				this.plugin.settings.conflictResolution,
-				ContactMapper.isEnrichedField
+				ContactMapper.isEnrichedField,
+				ContactMapper.isManagedField
 			);
 
 			for (const action of actions) {
@@ -324,6 +326,20 @@ export class SyncEngine {
 						});
 						break;
 					}
+					case "parallel-existing":
+						// No write, no `updated` flag, no console log -- this is a
+						// persisting, unresolved enriched disagreement that was
+						// already surfaced (and written) on a previous sync. Only
+						// the conflict log needs to keep recording it.
+						collector.push({
+							file: file.path,
+							field: action.key,
+							kept: fm[action.key],
+							mesh: action.value,
+							type: "enriched",
+							resolution: "obsidian",
+						});
+						break;
 					case "conflict":
 						if (this.plugin.settings.conflictResolution === "ask") {
 							this.log(`[conflict] ${file.basename} / ${action.key}: obsidian="${action.current}" vs me.sh="${action.incoming}"`);
@@ -334,6 +350,7 @@ export class SyncEngine {
 							kept: action.current,
 							mesh: action.incoming,
 							type: "direct",
+							// Safe: computeFieldActions never emits conflict actions in mesh mode.
 							resolution: this.plugin.settings.conflictResolution as "obsidian" | "ask",
 						});
 						break;
@@ -386,14 +403,17 @@ export class SyncEngine {
 			{ ...mapped } as Record<string, unknown>,
 			lastSynced,
 			this.plugin.settings.conflictResolution,
-			ContactMapper.isEnrichedField
+			ContactMapper.isEnrichedField,
+			ContactMapper.isManagedField
 		);
 
-		// Conflict actions never count as changes in the real path (updateFile
-		// never sets `updated` for them), so filter them out here too --
-		// otherwise a file whose only actions are conflicts would be counted
-		// as "updated" in dry run while the real sync would skip it.
-		const changeActions = actions.filter((action) => action.kind !== "conflict");
+		// Conflict and parallel-existing actions never count as changes in the
+		// real path (updateFile never sets `updated` for them), so filter them
+		// out here too -- otherwise a file whose only actions are these would
+		// be counted as "updated" in dry run while the real sync would skip it.
+		const changeActions = actions.filter(
+			(action) => action.kind !== "conflict" && action.kind !== "parallel-existing"
+		);
 
 		const changes = actions
 			.map((action) => {
@@ -404,6 +424,10 @@ export class SyncEngine {
 						return `  ~ ${action.key}: ${JSON.stringify(fm[action.key])} → ${JSON.stringify(action.value)}`;
 					case "parallel":
 						return `  ≠ ${action.key}: keeping current | would add "${action.key} (Me.sh)": ${JSON.stringify(action.value)}`;
+					case "parallel-existing":
+						// Persisting, unresolved enriched disagreement -- nothing
+						// new to write, mirrors the real path's silence.
+						return undefined;
 					case "conflict":
 						// Ask-mode-only, mirroring the real path's silent
 						// handling of conflicts in obsidian mode.
