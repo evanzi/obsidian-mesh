@@ -102,7 +102,7 @@ These only fill empty fields. When existing data differs, a parallel field is cr
 
 - Company, Title, City, Country, Birthday, Bio
 
-For example, if your note has `Company: Automattic` and me.sh says Anthropic PBC, the plugin adds `Company (Me.sh): Anthropic PBC` alongside the original. Your data stays untouched.
+For example, if your note has `Company: Automattic` and me.sh says Stripe, the plugin adds `Company (Me.sh): Stripe` alongside the original. Your data stays untouched.
 
 ### Sync conflicts
 
