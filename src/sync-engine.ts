@@ -4,6 +4,8 @@ import { ContactMapper } from "./contact-mapper";
 import type { MappedContactData } from "./contact-mapper";
 import type { MeshContactList, MeshContactDetail, MeshGroup } from "./mesh-api";
 import { orderFrontmatter, FIELD_ORDER } from "./frontmatter";
+import { computeFieldActions } from "./field-merge";
+import type { FieldAction } from "./field-merge";
 
 export interface SyncResult {
 	created: number;
@@ -67,7 +69,7 @@ export class SyncEngine {
 		// Load existing files and sync metadata
 		const existingFiles = await this.getExistingPeopleFiles(folderPath);
 		const fileIndex = this.buildFileIndex(existingFiles);
-		const syncMeta = isDryRun ? { lastSync: "", contacts: {} } : await this.loadSyncMetadata();
+		const syncMeta = await this.loadSyncMetadata();
 
 		this.log(`Found ${existingFiles.size} existing files in ${folderPath}`, true);
 
@@ -107,8 +109,12 @@ export class SyncEngine {
 
 				if (existingFile) {
 					if (isDryRun) {
-						this.logDryRunUpdate(existingFile, mapped, syncMeta);
-						result.updated++;
+						const actions = this.logDryRunUpdate(existingFile, mapped, syncMeta);
+						if (actions.length > 0) {
+							result.updated++;
+						} else {
+							result.skipped++;
+						}
 					} else {
 						const updated = await this.updateFile(existingFile, mapped, syncMeta);
 						if (updated) {
@@ -268,65 +274,31 @@ export class SyncEngine {
 			const contactId = String(mapped["Mesh ID"]);
 			const lastSynced = syncMeta.contacts[contactId] || {};
 
-			// First pass: check all non-metadata fields for changes
-			for (const [key, newValue] of Object.entries(mapped)) {
-				if (newValue === undefined) continue;
-				if (key === "Mesh Last Synced" || key === "Mesh URL" || key === "Mesh ID") continue;
+			const actions = computeFieldActions(
+				fm,
+				{ ...mapped } as Record<string, unknown>,
+				lastSynced,
+				this.plugin.settings.conflictResolution,
+				ContactMapper.isEnrichedField
+			);
 
-				const currentValue = fm[key];
-				const isEnriched = ContactMapper.isEnrichedField(key);
-
-				if (isEnriched) {
-					// ── Enriched field handling ──
-					// Empty in Obsidian → fill it
-					if (currentValue === undefined || currentValue === null || currentValue === "") {
-						fm[key] = newValue;
+			for (const action of actions) {
+				switch (action.kind) {
+					case "fill":
+					case "update":
+						fm[action.key] = action.value;
 						updated = true;
-						continue;
-					}
-
-					// Same value → nothing to do
-					if (JSON.stringify(currentValue) === JSON.stringify(newValue)) {
-						continue;
-					}
-
-					// Different value → write to parallel "(Me.sh)" field, keep original
-					const meshKey = `${key} (Me.sh)`;
-					const existingMeshValue = fm[meshKey];
-
-					// Only update the (Me.sh) field if the value changed
-					if (JSON.stringify(existingMeshValue) !== JSON.stringify(newValue)) {
-						fm[meshKey] = newValue;
+						break;
+					case "parallel": {
+						const currentValue = fm[action.key];
+						fm[action.meshKey] = action.value;
 						updated = true;
-						this.log(`[enriched conflict] ${file.basename} / ${key}: keeping "${currentValue}", adding "${key} (Me.sh)": "${newValue}"`);
+						this.log(`[enriched conflict] ${file.basename} / ${action.key}: keeping "${currentValue}", adding "${action.meshKey}": "${action.value}"`);
+						break;
 					}
-				} else {
-					// ── Direct field handling ──
-					const lastSyncedValue = lastSynced[key];
-
-					// Empty in Obsidian → fill it
-					if (currentValue === undefined || currentValue === null || currentValue === "") {
-						fm[key] = newValue;
-						updated = true;
-						continue;
-					}
-
-					// Same as last sync → safe to update from me.sh
-					if (JSON.stringify(currentValue) === JSON.stringify(lastSyncedValue)) {
-						if (JSON.stringify(currentValue) !== JSON.stringify(newValue)) {
-							fm[key] = newValue;
-							updated = true;
-						}
-						continue;
-					}
-
-					// Manually edited → apply conflict resolution
-					if (this.plugin.settings.conflictResolution === "mesh") {
-						fm[key] = newValue;
-						updated = true;
-					} else if (this.plugin.settings.conflictResolution === "ask") {
-						this.log(`[conflict] ${file.basename} / ${key}: obsidian="${currentValue}" vs me.sh="${newValue}"`);
-					}
+					case "conflict":
+						this.log(`[conflict] ${file.basename} / ${action.key}: obsidian="${action.current}" vs me.sh="${action.incoming}"`);
+						break;
 				}
 			}
 
@@ -356,38 +328,47 @@ export class SyncEngine {
 	}
 
 	/**
-	 * Log what would change for a file (dry-run mode)
+	 * Log what would change for a file (dry-run mode).
+	 *
+	 * Drives the report from the same `computeFieldActions` decision logic
+	 * `updateFile` uses for a real sync, so dry run reflects `lastSynced`
+	 * and `conflictResolution` instead of flagging every raw difference.
 	 */
 	private logDryRunUpdate(
 		file: TFile,
 		mapped: MappedContactData,
 		syncMeta: SyncMetadata
-	): void {
+	): FieldAction[] {
 		const fm = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter || {};
-		const changes: string[] = [];
+		const contactId = String(mapped["Mesh ID"]);
+		const lastSynced = syncMeta.contacts[contactId] || {};
 
-		for (const [key, newValue] of Object.entries(mapped)) {
-			if (newValue === undefined) continue;
-			if (key === "Mesh Last Synced") continue;
+		const actions = computeFieldActions(
+			fm,
+			{ ...mapped } as Record<string, unknown>,
+			lastSynced,
+			this.plugin.settings.conflictResolution,
+			ContactMapper.isEnrichedField
+		);
 
-			const currentValue = fm[key];
-			const isEmpty = currentValue === undefined || currentValue === null || currentValue === "";
-			const isEnriched = ContactMapper.isEnrichedField(key);
-
-			if (isEmpty) {
-				changes.push(`  + ${key}: ${JSON.stringify(newValue)}`);
-			} else if (JSON.stringify(currentValue) !== JSON.stringify(newValue)) {
-				if (isEnriched) {
-					changes.push(`  ≠ ${key}: keeping "${currentValue}" | would add "${key} (Me.sh)": ${JSON.stringify(newValue)}`);
-				} else {
-					changes.push(`  ~ ${key}: ${JSON.stringify(currentValue)} → ${JSON.stringify(newValue)}`);
-				}
+		const changes = actions.map((action) => {
+			switch (action.kind) {
+				case "fill":
+					return `  + ${action.key}: ${JSON.stringify(action.value)}`;
+				case "update":
+					return `  ~ ${action.key}: ${JSON.stringify(fm[action.key])} → ${JSON.stringify(action.value)}`;
+				case "parallel":
+					return `  ≠ ${action.key}: keeping current | would add "${action.key} (Me.sh)": ${JSON.stringify(action.value)}`;
+				case "conflict":
+					return `  ! ${action.key}: conflict (obsidian wins — no change)`;
 			}
-		}
+		});
 
 		if (changes.length > 0) {
 			this.log(`[dry-run] ${file.basename}:\n${changes.join("\n")}`);
 		}
+
+		return actions;
 	}
 
 	/**
