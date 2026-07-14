@@ -219,9 +219,12 @@ export class ContactMapper {
 	 * Strips characters illegal in Obsidian/OS file names and link syntax,
 	 * collapses whitespace, and drops whitespace-delimited segments that are
 	 * made up entirely of dots (e.g. "..", "...") -- these are the only ones
-	 * that enable path traversal or hidden-file names once path separators
-	 * have been neutralized above. Dots embedded in real content (e.g. "D."
-	 * or "example.com") are left alone.
+	 * that enable path traversal once path separators have been neutralized
+	 * above. Leading dots are then stripped so the result can't be a hidden
+	 * dot-file (".hidden", "..evil"). Dots embedded in real content (e.g.
+	 * "D." or "example.com") are left alone; glued trailing dots ("evil..")
+	 * are acceptable because the always-appended ".md" suffix means the
+	 * final basename never ends in a dot.
 	 */
 	static sanitizeFileName(name: string): string {
 		return name
@@ -229,6 +232,7 @@ export class ContactMapper {
 			.split(/\s+/)
 			.filter((segment) => segment !== "" && !/^\.+$/.test(segment))
 			.join(" ")
+			.replace(/^\.+/, "") // no leading dots (hidden files)
 			.trim();
 	}
 

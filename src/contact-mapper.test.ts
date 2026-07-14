@@ -192,6 +192,26 @@ describe("ContactMapper.sanitizeFileName", () => {
 	it("leaves a normal name with a legal comma unchanged", () => {
 		expect(ContactMapper.sanitizeFileName("Lori McLeese, GPHR")).toBe("Lori McLeese, GPHR");
 	});
+
+	it("strips leading dots glued to content (hidden dot-file)", () => {
+		expect(ContactMapper.sanitizeFileName(".hidden")).toBe("hidden");
+	});
+
+	it("strips a leading dot-run glued to content", () => {
+		expect(ContactMapper.sanitizeFileName("..evil")).toBe("evil");
+	});
+
+	it("preserves a trailing dot in real content", () => {
+		expect(ContactMapper.sanitizeFileName("Jane D.")).toBe("Jane D.");
+	});
+
+	it("preserves dots embedded between content", () => {
+		expect(ContactMapper.sanitizeFileName("a..b")).toBe("a..b");
+	});
+
+	it("preserves glued trailing dots (final basename gets a .md suffix)", () => {
+		expect(ContactMapper.sanitizeFileName("evil..")).toBe("evil..");
+	});
 });
 
 describe("ContactMapper.mapContactDetail", () => {
