@@ -17,6 +17,9 @@ your row when done.
 | 004  | Sanitize contact-derived file names | P1 | S | 001 | DONE |
 | 005  | Index-based contact matching (O(N+M)) | P2 | S | 001 | DONE |
 | 006  | Make dry run report real sync behavior | P2 | M | 001, 002 | DONE |
+| 007  | Mesh notes sync → "Me.sh Notes" field (opt-in) | P2 | S | 006 | TODO |
+| 008  | Sync conflicts viewer (persist + modal) | P2 | M | 006, 007 | TODO |
+| 009  | Guideline cleanup + rename to mesh-sync | P2 | S | 007, 008 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
