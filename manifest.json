@@ -1,7 +1,7 @@
 {
-  "id": "obsidian-mesh",
-  "name": "Me.sh Sync for Obsidian",
-  "version": "0.1.0",
+  "id": "mesh-sync",
+  "name": "Me.sh Sync",
+  "version": "0.2.0",
   "minAppVersion": "1.5.0",
   "description": "Sync your contacts from me.sh into Obsidian. Enrich your People notes with contact data, social profiles, and relationship insights.",
   "author": "Evan Zimmerman",

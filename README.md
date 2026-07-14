@@ -26,11 +26,22 @@ Users will need to have the Mesh desktop app for Mac installed and logged in bef
 Manual installation only (not yet in Community Plugins):
 
 1. Download the latest release from [GitHub](https://github.com/evanzi/obsidian-mesh), or clone the repo
-2. Copy `main.js` and `manifest.json` to `.obsidian/plugins/obsidian-mesh/` in your vault
-3. Enable "Me.sh Sync for Obsidian" in Obsidian Settings > Community Plugins
+2. Copy `main.js` and `manifest.json` to `.obsidian/plugins/mesh-sync/` in your vault
+3. Enable "Me.sh Sync" in Obsidian Settings > Community Plugins
 4. Set your People folder path in the plugin settings
 
 _Please test before making changes to your canonical contacts by using the Testing Safely steps below_
+
+### Upgrading from obsidian-mesh (≤0.1.0)
+
+The plugin id changed from `obsidian-mesh` to `mesh-sync`, so Obsidian treats it as a different plugin:
+
+1. Disable the old "Me.sh Sync for Obsidian" plugin
+2. Create `.obsidian/plugins/mesh-sync/` in your vault
+3. Copy the new `main.js` and `manifest.json` into that folder
+4. Copy `data.json` from the old `.obsidian/plugins/obsidian-mesh/` folder into `.obsidian/plugins/mesh-sync/` to preserve your settings and sync metadata
+5. Enable "Me.sh Sync" in Obsidian Settings > Community Plugins
+6. Once you've confirmed it's working, delete the old `.obsidian/plugins/obsidian-mesh/` folder
 
 ### Development
 

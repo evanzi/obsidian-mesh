@@ -196,13 +196,6 @@ export class MeshAPI {
 	}
 
 	/**
-	 * Fetch notes for a contact
-	 */
-	async getContactNotes(id: number): Promise<MeshNote[]> {
-		return this.request<MeshNote[]>(`/api/v1/network/contacts/${id}/notes`);
-	}
-
-	/**
 	 * Fetch all groups
 	 */
 	async getGroups(includeContactIds = true): Promise<MeshGroup[]> {
@@ -210,13 +203,6 @@ export class MeshAPI {
 			`/api/v2/groups/?include_contact_ids=${includeContactIds}`
 		);
 		return response;
-	}
-
-	/**
-	 * Fetch current user info
-	 */
-	async getSelf(): Promise<Record<string, unknown>> {
-		return this.request<Record<string, unknown>>("/api/v1/users/self/");
 	}
 
 	private log(message: string) {

@@ -50,7 +50,7 @@ export default class MeshPlugin extends Plugin {
 					const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
 					if (fm?.["Mesh ID"]) {
 						if (!checking) {
-							window.open(`https://app.me.sh/contact/${fm["Mesh ID"]}`);
+							window.open(`https://app.me.sh/contact/${encodeURIComponent(String(fm["Mesh ID"]))}`);
 						}
 						return true;
 					}

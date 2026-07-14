@@ -18,8 +18,6 @@ export class MeshSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Me.sh Sync for Obsidian" });
-
 		// Connection status
 		new Setting(containerEl)
 			.setName("Connection status")
@@ -48,7 +46,7 @@ export class MeshSettingTab extends PluginSettingTab {
 			);
 
 		// Sync behavior
-		containerEl.createEl("h3", { text: "Sync Behavior" });
+		new Setting(containerEl).setName("Sync behavior").setHeading();
 
 		new Setting(containerEl)
 			.setName("Auto sync")
@@ -128,7 +126,7 @@ export class MeshSettingTab extends PluginSettingTab {
 			);
 
 		// Data options
-		containerEl.createEl("h3", { text: "Data Options" });
+		new Setting(containerEl).setName("Data options").setHeading();
 
 		new Setting(containerEl)
 			.setName("Sync social profiles")
