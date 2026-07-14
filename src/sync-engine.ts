@@ -22,6 +22,12 @@ interface SyncMetadata {
 // Small delay between detail API calls to avoid rate limiting
 const DETAIL_FETCH_DELAY_MS = 100;
 
+interface FileIndex {
+	byMeshId: Map<number, TFile>;
+	byEmail: Map<string, TFile>; // lowercased email -> file
+	byLowerName: Map<string, TFile>; // lowercased basename -> file
+}
+
 export class SyncEngine {
 	private plugin: MeshPlugin;
 
@@ -60,9 +66,23 @@ export class SyncEngine {
 
 		// Load existing files and sync metadata
 		const existingFiles = await this.getExistingPeopleFiles(folderPath);
+		const fileIndex = this.buildFileIndex(existingFiles);
 		const syncMeta = isDryRun ? { lastSync: "", contacts: {} } : await this.loadSyncMetadata();
 
 		this.log(`Found ${existingFiles.size} existing files in ${folderPath}`, true);
+
+		// Pre-index group membership: contactId -> group titles
+		const groupsByContact = new Map<number, string[]>();
+		for (const g of groups) {
+			for (const contactId of g.contact_ids || []) {
+				const titles = groupsByContact.get(contactId);
+				if (titles) {
+					titles.push(g.title);
+				} else {
+					groupsByContact.set(contactId, [g.title]);
+				}
+			}
+		}
 
 		// Step 4: Fetch detail for each contact and sync
 		for (let i = 0; i < realContacts.length; i++) {
@@ -77,12 +97,13 @@ export class SyncEngine {
 				// Fetch full detail for this contact
 				const detail = await this.plugin.api.getContactDetail(listContact.id);
 
-				const mapped = ContactMapper.mapContactDetail(detail, groups, this.plugin.settings);
+				const groupTitles = groupsByContact.get(detail.id) || [];
+				const mapped = ContactMapper.mapContactDetail(detail, groupTitles, this.plugin.settings);
 				const fileName = ContactMapper.getFileNameFromDetail(detail, this.plugin.settings.fileNameFormat);
 				const filePath = normalizePath(`${folderPath}/${fileName}.md`);
 
 				// Try to match to existing file
-				const existingFile = this.findMatchingFile(existingFiles, detail, mapped);
+				const existingFile = this.findMatchingFile(fileIndex, detail);
 
 				if (existingFile) {
 					if (isDryRun) {
@@ -137,50 +158,49 @@ export class SyncEngine {
 	}
 
 	/**
+	 * Build lookup indexes over existing files once per sync, so matching a
+	 * contact is O(1) instead of an O(files) scan per contact.
+	 */
+	private buildFileIndex(files: Map<string, TFile>): FileIndex {
+		const byMeshId = new Map<number, TFile>();
+		const byEmail = new Map<string, TFile>();
+		const byLowerName = new Map<string, TFile>();
+		for (const [name, file] of files) {
+			byLowerName.set(name.toLowerCase(), file);
+			const fm = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
+			if (typeof fm?.["Mesh ID"] === "number") byMeshId.set(fm["Mesh ID"], file);
+			const emails = fm?.["Email (Private)"];
+			if (emails) {
+				for (const e of String(emails).split(",")) {
+					byEmail.set(e.trim().toLowerCase(), file);
+				}
+			}
+		}
+		return { byMeshId, byEmail, byLowerName };
+	}
+
+	/**
 	 * Find an existing file that matches a Mesh contact.
 	 * Priority: Mesh ID > email (all emails, both sides) > filename
 	 */
-	private findMatchingFile(
-		files: Map<string, TFile>,
-		contact: MeshContactDetail,
-		mapped: MappedContactData
-	): TFile | null {
+	private findMatchingFile(index: FileIndex, contact: MeshContactDetail): TFile | null {
 		// Match by Mesh ID first (fastest for subsequent syncs)
-		for (const [_, file] of files) {
-			const fm = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
-			if (fm?.["Mesh ID"] === contact.id) return file;
-		}
+		const byId = index.byMeshId.get(contact.id);
+		if (byId) return byId;
 
 		// Collect ALL emails from the Mesh contact (not just primary)
 		const meshEmails = (contact.information || [])
 			.filter((i) => i.type === "email")
 			.map((i) => i.value.toLowerCase());
 
-		if (meshEmails.length > 0) {
-			for (const [_, file] of files) {
-				const fm = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
-				const existingEmail = fm?.["Email (Private)"];
-				if (!existingEmail) continue;
-
-				// Split comma-separated emails in the Obsidian file
-				const obsidianEmails = String(existingEmail).split(",").map((e) => e.trim().toLowerCase());
-
-				// Check if ANY Mesh email matches ANY Obsidian email
-				if (meshEmails.some((me) => obsidianEmails.includes(me))) {
-					return file;
-				}
-			}
+		for (const email of meshEmails) {
+			const byEmail = index.byEmail.get(email);
+			if (byEmail) return byEmail;
 		}
 
 		// Match by file name
 		// Normalize: collapse whitespace, case-insensitive
 		const normalize = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
-
-		// Build a case-insensitive lookup from existing files
-		const filesLower = new Map<string, TFile>();
-		for (const [name, file] of files) {
-			filesLower.set(name.toLowerCase(), file);
-		}
 
 		const possibleNames = [
 			contact.fullName,
@@ -192,7 +212,7 @@ export class SyncEngine {
 
 		// Exact match (case-insensitive)
 		for (const name of possibleNames) {
-			const file = filesLower.get(name);
+			const file = index.byLowerName.get(name);
 			if (file) return file;
 		}
 
@@ -203,7 +223,7 @@ export class SyncEngine {
 		const lastName = (contact.lastName || "").split(",")[0].trim().toLowerCase(); // strip credentials
 		if (firstName && lastName) {
 			const baseName = `${firstName} ${lastName}`;
-			const file = filesLower.get(baseName);
+			const file = index.byLowerName.get(baseName);
 			if (file) return file;
 		}
 

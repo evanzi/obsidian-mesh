@@ -1,4 +1,4 @@
-import type { MeshContactDetail, MeshContactList, MeshGroup } from "./mesh-api";
+import type { MeshContactDetail, MeshContactList } from "./mesh-api";
 import type { MeshSettings } from "./settings";
 
 /**
@@ -61,7 +61,7 @@ export class ContactMapper {
 	 */
 	static mapContactDetail(
 		contact: MeshContactDetail,
-		groups: MeshGroup[],
+		groupTitles: string[] = [],
 		settings: MeshSettings
 	): MappedContactData {
 		const now = new Date().toISOString().slice(0, 19);
@@ -144,10 +144,10 @@ export class ContactMapper {
 					contactGroups.push(list.title);
 				}
 			}
-			if (groups?.length) {
-				for (const g of groups) {
-					if (g.contact_ids?.includes(contact.id) && !contactGroups.includes(g.title)) {
-						contactGroups.push(g.title);
+			if (groupTitles?.length) {
+				for (const title of groupTitles) {
+					if (!contactGroups.includes(title)) {
+						contactGroups.push(title);
 					}
 				}
 			}

@@ -293,6 +293,23 @@ describe("ContactMapper.mapContactDetail", () => {
 		expect(data.Company).toBe("Current Co");
 		expect(data.Title).toEqual(["Senior Engineer"]);
 	});
+
+	it("merges contact.lists titles with passed groupTitles without duplicates", () => {
+		const contact = makeContactDetail({
+			lists: [
+				{ id: 1, title: "Friends" },
+				{ id: 2, title: "Work" },
+			],
+		});
+		const data = ContactMapper.mapContactDetail(contact, ["Work", "VIP"], TEST_SETTINGS);
+		expect(data["Mesh Groups"]).toEqual(["Friends", "Work", "VIP"]);
+	});
+
+	it("omits Mesh Groups when there are no lists and no groupTitles", () => {
+		const contact = makeContactDetail({ lists: [] });
+		const data = ContactMapper.mapContactDetail(contact, [], TEST_SETTINGS);
+		expect(data["Mesh Groups"]).toBeUndefined();
+	});
 });
 
 describe("ContactMapper.isEnrichedField", () => {

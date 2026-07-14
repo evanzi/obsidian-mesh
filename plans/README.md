@@ -15,7 +15,7 @@ your row when done.
 | 002  | Fix saveSettings clobbering syncMeta | P1 | S | 001 | DONE |
 | 003  | Replace hand-rolled YAML with stringifyYaml | P1 | S | 001 | DONE |
 | 004  | Sanitize contact-derived file names | P1 | S | 001 | DONE |
-| 005  | Index-based contact matching (O(N+M)) | P2 | S | 001 | TODO |
+| 005  | Index-based contact matching (O(N+M)) | P2 | S | 001 | DONE |
 | 006  | Make dry run report real sync behavior | P2 | M | 001, 002 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
