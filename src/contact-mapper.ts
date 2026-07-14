@@ -36,6 +36,7 @@ export interface MappedContactData {
 	"Relationship Strength"?: string;
 	"Mesh Groups"?: string[];
 	"Mesh Sources"?: string[];
+	"Me.sh Notes"?: string[];
 	Photo?: string;
 
 	// Enriched data (potentially unreliable -- from me.sh enrichment engine)
@@ -157,6 +158,22 @@ export class ContactMapper {
 		// Sources / integrations (direct -- which services this contact came from)
 		if (contact.integrations?.length) {
 			data["Mesh Sources"] = contact.integrations;
+		}
+
+		// Notes (user-authored in me.sh -- direct)
+		if (settings.syncNotes && contact.notes?.length) {
+			const notes = [...contact.notes]
+				.sort((a, b) => (a.created || "").localeCompare(b.created || ""))
+				.map((n) => {
+					const body = (n.body || "").replace(/\s+/g, " ").trim();
+					if (!body) return "";
+					const date = /^\d{4}-\d{2}-\d{2}/.test(n.created || "")
+						? `${n.created.slice(0, 10)}: `
+						: "";
+					return `${date}${body}`;
+				})
+				.filter((n) => n !== "");
+			if (notes.length > 0) data["Me.sh Notes"] = notes;
 		}
 
 		// Photo

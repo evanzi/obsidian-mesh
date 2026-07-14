@@ -149,5 +149,15 @@ export class MeshSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				})
 			);
+
+		new Setting(containerEl)
+			.setName("Sync notes")
+			.setDesc("Write Mesh notes to a 'Me.sh Notes' field. The field is replaced on each sync -- edit notes in Mesh, not in this field.")
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.syncNotes).onChange(async (value) => {
+					this.plugin.settings.syncNotes = value;
+					await this.plugin.saveSettings();
+				})
+			);
 	}
 }

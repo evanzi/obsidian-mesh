@@ -13,6 +13,7 @@ export interface MeshSettings {
 	syncSocialProfiles: boolean;
 	syncRelationshipData: boolean;
 	syncTagsAndGroups: boolean;
+	syncNotes: boolean;
 	syncPhotos: boolean;
 }
 
@@ -27,6 +28,7 @@ export const DEFAULT_SETTINGS: MeshSettings = {
 	syncSocialProfiles: true,
 	syncRelationshipData: true,
 	syncTagsAndGroups: true,
+	syncNotes: false,
 	syncPhotos: false,
 };
 

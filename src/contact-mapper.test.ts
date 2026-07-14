@@ -17,6 +17,7 @@ const TEST_SETTINGS: MeshSettings = {
 	syncSocialProfiles: true,
 	syncRelationshipData: true,
 	syncTagsAndGroups: true,
+	syncNotes: false,
 	syncPhotos: false,
 };
 
@@ -309,6 +310,73 @@ describe("ContactMapper.mapContactDetail", () => {
 		const contact = makeContactDetail({ lists: [] });
 		const data = ContactMapper.mapContactDetail(contact, [], TEST_SETTINGS);
 		expect(data["Mesh Groups"]).toBeUndefined();
+	});
+});
+
+describe("ContactMapper.mapContactDetail -- notes", () => {
+	it("omits Me.sh Notes when syncNotes is off (default), even with notes present", () => {
+		const contact = makeContactDetail({
+			notes: [{ id: 1, body: "Met at a conference", created: "2026-01-01T00:00:00Z", updated: "2026-01-01T00:00:00Z" }],
+		});
+		const data = ContactMapper.mapContactDetail(contact, [], TEST_SETTINGS);
+		expect(data["Me.sh Notes"]).toBeUndefined();
+	});
+
+	it("omits Me.sh Notes when syncNotes is on but notes is empty", () => {
+		const contact = makeContactDetail({ notes: [] });
+		const data = ContactMapper.mapContactDetail(contact, [], { ...TEST_SETTINGS, syncNotes: true });
+		expect(data["Me.sh Notes"]).toBeUndefined();
+	});
+
+	it("sorts notes ascending by created and prefixes each with its date", () => {
+		const contact = makeContactDetail({
+			notes: [
+				{ id: 1, body: "Second note", created: "2026-02-01T00:00:00Z", updated: "2026-02-01T00:00:00Z" },
+				{ id: 2, body: "First note", created: "2026-01-01T00:00:00Z", updated: "2026-01-01T00:00:00Z" },
+			],
+		});
+		const data = ContactMapper.mapContactDetail(contact, [], { ...TEST_SETTINGS, syncNotes: true });
+		expect(data["Me.sh Notes"]).toEqual([
+			"2026-01-01: First note",
+			"2026-02-01: Second note",
+		]);
+	});
+
+	it("collapses a multiline/whitespace-heavy body into a single-spaced line", () => {
+		const contact = makeContactDetail({
+			notes: [
+				{ id: 1, body: "Line one\n\nLine   two\ttabbed", created: "2026-01-01T00:00:00Z", updated: "2026-01-01T00:00:00Z" },
+			],
+		});
+		const data = ContactMapper.mapContactDetail(contact, [], { ...TEST_SETTINGS, syncNotes: true });
+		expect(data["Me.sh Notes"]).toEqual(["2026-01-01: Line one Line two tabbed"]);
+	});
+
+	it("omits the date prefix for a non-ISO created value", () => {
+		const contact = makeContactDetail({
+			notes: [{ id: 1, body: "No date on this one", created: "", updated: "" }],
+		});
+		const data = ContactMapper.mapContactDetail(contact, [], { ...TEST_SETTINGS, syncNotes: true });
+		expect(data["Me.sh Notes"]).toEqual(["No date on this one"]);
+	});
+
+	it("drops a note whose body collapses to empty, keeping other notes", () => {
+		const contact = makeContactDetail({
+			notes: [
+				{ id: 1, body: "   \n\t  ", created: "2026-01-01T00:00:00Z", updated: "2026-01-01T00:00:00Z" },
+				{ id: 2, body: "Real note", created: "2026-01-02T00:00:00Z", updated: "2026-01-02T00:00:00Z" },
+			],
+		});
+		const data = ContactMapper.mapContactDetail(contact, [], { ...TEST_SETTINGS, syncNotes: true });
+		expect(data["Me.sh Notes"]).toEqual(["2026-01-02: Real note"]);
+	});
+
+	it("omits Me.sh Notes entirely when all notes collapse to empty bodies", () => {
+		const contact = makeContactDetail({
+			notes: [{ id: 1, body: "   ", created: "2026-01-01T00:00:00Z", updated: "2026-01-01T00:00:00Z" }],
+		});
+		const data = ContactMapper.mapContactDetail(contact, [], { ...TEST_SETTINGS, syncNotes: true });
+		expect(data["Me.sh Notes"]).toBeUndefined();
 	});
 });
 

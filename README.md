@@ -52,6 +52,7 @@ npm run build
 | **Sync social profiles** | Toggle sync for LinkedIn, Twitter, GitHub, Instagram, Facebook |
 | **Sync relationship data** | Toggle last contacted date and relationship strength |
 | **Sync tags & groups** | Toggle me.sh group memberships |
+| **Sync notes** | Write Mesh notes to a "Me.sh Notes" field (off by default; field is replaced each sync) |
 
 ## Testing Safely
 
@@ -77,6 +78,7 @@ These follow your conflict resolution setting:
 - LinkedIn, Twitter, GitHub, Instagram, Facebook
 - Last Contacted, Relationship Strength
 - Groups, Sources
+- Me.sh Notes
 
 ### Enriched fields (from me.sh's enrichment engine, can be inaccurate)
 

@@ -39,6 +39,7 @@ export const FIELD_ORDER = [
 	"Birthday (Me.sh)",
 	"Bio (Me.sh)",
 	"Mesh Sources",
+	"Me.sh Notes",
 	"Mesh Groups",
 	"Mesh ID",
 	"Mesh Last Synced",
