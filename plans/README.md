@@ -11,7 +11,7 @@ your row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001  | Establish vitest baseline + ContactMapper tests | P1 | S | — | TODO |
+| 001  | Establish vitest baseline + ContactMapper tests | P1 | S | — | DONE |
 | 002  | Fix saveSettings clobbering syncMeta | P1 | S | 001 | TODO |
 | 003  | Replace hand-rolled YAML with stringifyYaml | P1 | S | 001 | TODO |
 | 004  | Sanitize contact-derived file names | P1 | S | 001 | TODO |
